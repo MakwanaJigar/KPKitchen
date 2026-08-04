@@ -12,6 +12,8 @@ import BottomTabNavigator from './BottomTabNavigator';
 import NotificationScreen from '../screens/NotificationScreen';
 import OrderDetailScreen from '../screens/OrderDetail';
 import HomeScreen from '../screens/HomeScreen';
+import Otp from '../screens/Otp';
+import ResetPassword from '../screens/ResetPassword';
 
 const Stack = createNativeStackNavigator();
 
@@ -64,6 +66,16 @@ const AppNavigator = () => {
       <Stack.Screen
         name="HomeScreen"
         component={HomeScreen}
+      />
+
+      <Stack.Screen
+        name="Otp"
+        component={Otp}
+      />
+
+      <Stack.Screen
+        name="ResetPassword"
+        component={ResetPassword}
       />
     </Stack.Navigator>
   );

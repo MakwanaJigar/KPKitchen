@@ -1,5 +1,4 @@
 import React, {useState} from 'react';
-import {SafeAreaView} from 'react-native-safe-area-context';
 
 import {
   ActivityIndicator,
@@ -15,15 +14,21 @@ import {
   View,
 } from 'react-native';
 
+import {SafeAreaView} from 'react-native-safe-area-context';
 import axios from 'axios';
 
-const FORGOT_PASSWORD_API_URL =
-  'https://replete-software.com/projects/kp_kitchen/api/driver/forgot-password';
+const VERIFY_OTP_API_URL =
+  'https://replete-software.com/projects/kp_kitchen/api/driver/verify-forgot-password-otp';
 
-const ForgotPasswordScreen = ({navigation}) => {
+const OTP_LENGTH = 6;
+
+const OTP = ({navigation, route}) => {
   const {width, height} = useWindowDimensions();
 
-  const [email, setEmail] = useState('');
+  const email =
+    route?.params?.email?.trim()?.toLowerCase() || '';
+
+  const [otp, setOtp] = useState('');
   const [isLoading, setIsLoading] =
     useState(false);
 
@@ -38,18 +43,51 @@ const ForgotPasswordScreen = ({navigation}) => {
     460,
   );
 
-  const validateEmail = emailValue => {
-    const emailPattern =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  /**
+   * Hide part of the email address.
+   */
+  const maskEmail = emailAddress => {
+    if (!emailAddress) {
+      return 'your registered email';
+    }
 
-    return emailPattern.test(
-      emailValue.trim(),
+    const parts = emailAddress.split('@');
+
+    if (parts.length !== 2) {
+      return emailAddress;
+    }
+
+    const username = parts[0];
+    const domain = parts[1];
+
+    if (username.length <= 1) {
+      return `${username.charAt(0)}***@${domain}`;
+    }
+
+    if (username.length === 2) {
+      return `${username.charAt(0)}***@${domain}`;
+    }
+
+    return `${username.slice(0, 2)}***@${domain}`;
+  };
+
+  /**
+   * Allow only numeric OTP characters.
+   */
+  const handleOtpChange = value => {
+    const numbersOnly = String(value).replace(
+      /[^0-9]/g,
+      '',
+    );
+
+    setOtp(
+      numbersOnly.slice(0, OTP_LENGTH),
     );
   };
 
   /**
-   * Convert Laravel validation errors
-   * into a readable message.
+   * Convert Laravel validation errors into
+   * a readable message without Array.flat().
    */
   const extractValidationErrors =
     errors => {
@@ -91,266 +129,298 @@ const ForgotPasswordScreen = ({navigation}) => {
     };
 
   /**
-   * Return readable errors from Axios
-   * and the Laravel API.
+   * Convert Axios and Laravel errors into
+   * a readable message.
    */
-  const getForgotPasswordErrorMessage =
-    error => {
-      console.log(
-        '===== FORGOT PASSWORD ERROR =====',
-      );
+  const getOtpErrorMessage = error => {
+    console.log(
+      '========== VERIFY OTP ERROR ==========',
+    );
 
-      console.log(
-        'Message:',
-        error?.message,
-      );
+    console.log(
+      'Message:',
+      error?.message,
+    );
 
-      console.log(
-        'Code:',
-        error?.code,
-      );
+    console.log(
+      'Code:',
+      error?.code,
+    );
 
-      console.log(
-        'Status:',
-        error?.response?.status,
-      );
+    console.log(
+      'Status:',
+      error?.response?.status,
+    );
 
-      console.log(
-        'Response:',
-        error?.response?.data,
-      );
+    console.log(
+      'Response:',
+      error?.response?.data,
+    );
 
-      console.log(
-        'Request URL:',
-        error?.config?.url,
-      );
+    console.log(
+      'Request URL:',
+      error?.config?.url,
+    );
 
-      console.log(
-        '=================================',
-      );
+    console.log(
+      '======================================',
+    );
 
-      if (error?.response) {
-        const responseData =
-          error.response.data;
+    if (error?.response) {
+      const responseData =
+        error.response.data;
 
-        const validationMessages =
-          extractValidationErrors(
-            responseData?.errors,
-          );
+      const validationMessages =
+        extractValidationErrors(
+          responseData?.errors,
+        );
 
-        if (
-          validationMessages.length > 0
-        ) {
-          return validationMessages.join(
-            '\n',
-          );
-        }
-
-        if (
-          error.response.status === 404
-        ) {
-          return (
-            responseData?.message ||
-            'No driver account was found with this email address.'
-          );
-        }
-
-        if (
-          error.response.status === 422
-        ) {
-          return (
-            responseData?.message ||
-            'Please enter a valid registered email address.'
-          );
-        }
-
-        if (
-          error.response.status === 429
-        ) {
-          return (
-            responseData?.message ||
-            'Too many reset requests. Please wait before trying again.'
-          );
-        }
-
-        return (
-          responseData?.message ||
-          responseData?.error ||
-          `The server returned error ${error.response.status}.`
+      if (
+        validationMessages.length > 0
+      ) {
+        return validationMessages.join(
+          '\n',
         );
       }
 
       if (
-        error?.code === 'ECONNABORTED'
+        error.response.status === 400
       ) {
-        return 'The request timed out. Please try again.';
+        return (
+          responseData?.message ||
+          'The OTP is invalid or has expired.'
+        );
       }
 
-      if (error?.request) {
+      if (
+        error.response.status === 404
+      ) {
         return (
-          'The forgot-password server did not respond. ' +
-          'Please check your internet connection and try again.'
+          responseData?.message ||
+          'No password reset request was found for this email address.'
+        );
+      }
+
+      if (
+        error.response.status === 422
+      ) {
+        return (
+          responseData?.message ||
+          'Please enter a valid six-digit OTP.'
+        );
+      }
+
+      if (
+        error.response.status === 429
+      ) {
+        return (
+          responseData?.message ||
+          'Too many verification attempts. Please wait and try again.'
         );
       }
 
       return (
-        error?.message ||
-        'An unexpected error occurred. Please try again.'
+        responseData?.message ||
+        responseData?.error ||
+        `The server returned error ${error.response.status}.`
       );
-    };
+    }
+
+    if (
+      error?.code === 'ECONNABORTED'
+    ) {
+      return 'The OTP verification request timed out. Please try again.';
+    }
+
+    if (error?.request) {
+      return (
+        'The OTP verification server did not respond. ' +
+        'Please check your internet connection and try again.'
+      );
+    }
+
+    return (
+      error?.message ||
+      'An unexpected error occurred while verifying the OTP.'
+    );
+  };
 
   /**
-   * Validate the email, call the API,
-   * and redirect to OTPVerification
-   * only after a successful response.
+   * Verify the OTP using the API.
    */
-  const handleSendResetLink =
-    async () => {
-      if (isLoading) {
-        return;
-      }
+  const handleVerifyOtp = async () => {
+    if (isLoading) {
+      return;
+    }
 
-      const cleanEmail = email
-        .trim()
-        .toLowerCase();
+    const cleanOtp = otp.trim();
 
-      if (!cleanEmail) {
-        Alert.alert(
-          'Email Required',
-          'Please enter your registered email address.',
-        );
-
-        return;
-      }
-
-      if (
-        !validateEmail(cleanEmail)
-      ) {
-        Alert.alert(
-          'Invalid Email',
-          'Please enter a valid email address.',
-        );
-
-        return;
-      }
-
-      const requestData = {
-        email: cleanEmail,
-      };
-
-      try {
-        setIsLoading(true);
-
-        console.log(
-          'Forgot password API:',
-          FORGOT_PASSWORD_API_URL,
-        );
-
-        console.log(
-          'Forgot password request:',
-          requestData,
-        );
-
-        const response =
-          await axios.post(
-            FORGOT_PASSWORD_API_URL,
-            requestData,
-            {
-              headers: {
-                Accept:
-                  'application/json',
-
-                'Content-Type':
-                  'application/json',
-              },
-
-              timeout: 20000,
+    if (!email) {
+      Alert.alert(
+        'Email Missing',
+        'Your email address was not received. Please return to the forgot-password screen and try again.',
+        [
+          {
+            text: 'Go Back',
+            onPress: () => {
+              navigation.goBack();
             },
-          );
-
-        console.log(
-          'Forgot password response:',
-          response.data,
-        );
-
-        const responseData =
-          response.data;
-
-        /**
-         * Some Laravel APIs return HTTP 200
-         * even when the request has failed.
-         */
-        if (
-          responseData?.status ===
-            false ||
-          responseData?.success ===
-            false
-        ) {
-          Alert.alert(
-            'Request Failed',
-
-            responseData?.message ||
-              'Unable to send the OTP. Please try again.',
-          );
-
-          return;
-        }
-
-        /**
-         * The API request succeeded.
-         * Redirect directly to OTP screen.
-         */
-        navigation.replace(
-          'Otp',
-          {
-            email: cleanEmail,
-
-            message:
-              responseData?.message ||
-              'OTP sent successfully.',
-
-            forgotPasswordData:
-              responseData?.data ||
-              null,
           },
-        );
-      } catch (error) {
-        console.log(
-          'Forgot password API error:',
-          {
-            message:
-              error?.message,
+        ],
+      );
 
-            code:
-              error?.code,
+      return;
+    }
 
-            status:
-              error?.response
-                ?.status,
+    if (!cleanOtp) {
+      Alert.alert(
+        'OTP Required',
+        'Please enter the OTP sent to your registered email address.',
+      );
 
-            response:
-              error?.response
-                ?.data,
+      return;
+    }
 
-            url:
-              error?.config?.url,
-          },
-        );
+    if (
+      cleanOtp.length !== OTP_LENGTH
+    ) {
+      Alert.alert(
+        'Invalid OTP',
+        `Please enter the complete ${OTP_LENGTH}-digit OTP.`,
+      );
 
-        Alert.alert(
-          'Request Failed',
-          getForgotPasswordErrorMessage(
-            error,
-          ),
-        );
-      } finally {
-        setIsLoading(false);
-      }
+      return;
+    }
+
+    if (!/^\d{6}$/.test(cleanOtp)) {
+      Alert.alert(
+        'Invalid OTP',
+        'The OTP must contain only numbers.',
+      );
+
+      return;
+    }
+
+    const requestData = {
+      email,
+      otp: cleanOtp,
     };
 
+    try {
+      setIsLoading(true);
+
+      console.log(
+        'Verify OTP API:',
+        VERIFY_OTP_API_URL,
+      );
+
+      console.log(
+        'Verify OTP request:',
+        requestData,
+      );
+
+      const response = await axios.post(
+        VERIFY_OTP_API_URL,
+        requestData,
+        {
+          headers: {
+            Accept: 'application/json',
+            'Content-Type':
+              'application/json',
+          },
+
+          timeout: 20000,
+        },
+      );
+
+      console.log(
+        'Complete verify OTP response:',
+        response.data,
+      );
+
+      const responseData =
+        response.data;
+
+      /**
+       * Some APIs return HTTP 200 while
+       * success or status is false.
+       */
+      if (
+        responseData?.status === false ||
+        responseData?.success === false
+      ) {
+        Alert.alert(
+          'Verification Failed',
+          responseData?.message ||
+            'The OTP is invalid or has expired.',
+        );
+
+        return;
+      }
+
+      /**
+       * Extract a reset token when the API
+       * returns one.
+       */
+      const resetToken =
+        responseData?.reset_token ||
+        responseData?.resetToken ||
+        responseData?.token ||
+        responseData?.data?.reset_token ||
+        responseData?.data?.resetToken ||
+        responseData?.data?.token ||
+        '';
+
+      /**
+       * OTP verified successfully.
+       * Replace the OTP screen with ResetPassword.
+       */
+      navigation.replace(
+        'ResetPassword',
+        {
+          email,
+          otp: cleanOtp,
+          resetToken,
+
+          verifyOtpMessage:
+            responseData?.message ||
+            'OTP verified successfully.',
+
+          verifyOtpData:
+            responseData?.data || null,
+        },
+      );
+    } catch (error) {
+      console.log(
+        'Verify OTP API error:',
+        {
+          message: error?.message,
+          code: error?.code,
+          status:
+            error?.response?.status,
+          response:
+            error?.response?.data,
+          url: error?.config?.url,
+        },
+      );
+
+      Alert.alert(
+        'Verification Failed',
+        getOtpErrorMessage(error),
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleChangeEmail = () => {
+    if (!isLoading) {
+      navigation.goBack();
+    }
+  };
+
   return (
-    <SafeAreaView
-      style={styles.safeArea}>
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar
         barStyle="dark-content"
         backgroundColor="#f8f9fb"
@@ -376,7 +446,7 @@ const ForgotPasswordScreen = ({navigation}) => {
           false
         }>
         <View style={styles.page}>
-          {/* Decorative top circle */}
+          {/* Decorative circles */}
 
           <View
             pointerEvents="none"
@@ -395,8 +465,6 @@ const ForgotPasswordScreen = ({navigation}) => {
               },
             ]}
           />
-
-          {/* Decorative bottom circle */}
 
           <View
             pointerEvents="none"
@@ -470,7 +538,7 @@ const ForgotPasswordScreen = ({navigation}) => {
                       : 32,
                 },
               ]}>
-              Forgot Password?
+              Verify OTP
             </Text>
 
             <Text
@@ -483,18 +551,17 @@ const ForgotPasswordScreen = ({navigation}) => {
                       : 15,
                 },
               ]}>
-              Enter your registered
-              email address and we will
-              send you a password reset
-              OTP.
+              Enter the verification code
+              sent to your registered email
+              address.
             </Text>
           </View>
 
-          {/* Forgot password card */}
+          {/* OTP card */}
 
           <View
             style={[
-              styles.forgotCard,
+              styles.otpCard,
               {
                 width: cardWidth,
 
@@ -521,20 +588,24 @@ const ForgotPasswordScreen = ({navigation}) => {
                         : 25,
                   },
                 ]}>
-                Reset Password
+                Enter Verification Code
               </Text>
 
               <Text
                 style={
                   styles.cardDescription
                 }>
-                We will send a verification
-                OTP to your registered
-                email address.
+                We sent a six-digit OTP
+                to:
+              </Text>
+
+              <Text
+                style={styles.emailText}>
+                {maskEmail(email)}
               </Text>
             </View>
 
-            {/* Information box */}
+            {/* OTP information */}
 
             <View
               style={styles.infoBox}>
@@ -544,77 +615,77 @@ const ForgotPasswordScreen = ({navigation}) => {
                 }>
                 <Image
                   source={require('../assets/mail.png')}
-                  style={
-                    styles.infoIcon
-                  }
+                  style={styles.infoIcon}
                 />
               </View>
 
               <Text
                 style={styles.infoText}>
-                Make sure you can access
-                the email address associated
-                with your driver account.
+                Check your inbox and enter
+                the OTP before it expires.
               </Text>
             </View>
 
-            {/* Email input */}
+            {/* OTP input */}
 
             <View
               style={styles.inputGroup}>
               <Text
                 style={styles.inputLabel}>
-                Email Address
+                Six-Digit OTP
               </Text>
 
               <View
                 style={
-                  styles.inputContainer
+                  styles.otpInputContainer
                 }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/mail.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
-                </View>
-
                 <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="example@email.com"
-                  placeholderTextColor="#9ca3af"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!isLoading}
-                  style={
-                    styles.textInput
+                  value={otp}
+                  onChangeText={
+                    handleOtpChange
                   }
+                  placeholder="000000"
+                  placeholderTextColor="#b8bdc6"
+                  keyboardType="number-pad"
+                  maxLength={OTP_LENGTH}
+                  editable={!isLoading}
+                  selectionColor="#d00018"
+                  style={styles.otpInput}
                 />
+              </View>
+
+              <View
+                style={styles.otpProgress}>
+                {Array.from({
+                  length: OTP_LENGTH,
+                }).map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.otpProgressDot,
+
+                      index < otp.length &&
+                        styles.otpProgressDotActive,
+                    ]}
+                  />
+                ))}
               </View>
             </View>
 
-            {/* Send OTP button */}
+            {/* Verify button */}
 
             <Pressable
-              onPress={
-                handleSendResetLink
-              }
+              onPress={handleVerifyOtp}
               disabled={isLoading}
               style={({pressed}) => [
-                styles.resetButton,
+                styles.verifyButton,
 
                 pressed &&
                   !isLoading &&
-                  styles.resetButtonPressed,
+                  styles.verifyButtonPressed,
 
                 isLoading &&
-                  styles.resetButtonDisabled,
+                  styles.verifyButtonDisabled,
               ]}>
               {isLoading ? (
                 <View
@@ -630,22 +701,22 @@ const ForgotPasswordScreen = ({navigation}) => {
                     style={
                       styles.loadingText
                     }>
-                    Sending OTP...
+                    Verifying...
                   </Text>
                 </View>
               ) : (
                 <>
                   <Text
                     style={
-                      styles.resetButtonText
+                      styles.verifyButtonText
                     }>
-                    Send OTP
+                    Verify OTP
                   </Text>
 
                   <View
                     pointerEvents="none"
                     style={
-                      styles.resetArrowContainer
+                      styles.arrowContainer
                     }>
                     <Image
                       source={require('../assets/right-arrow.png')}
@@ -658,35 +729,29 @@ const ForgotPasswordScreen = ({navigation}) => {
               )}
             </Pressable>
 
-            {/* Back to Login */}
+            {/* Change email */}
 
-            <View
-              style={styles.backRow}>
+            <View style={styles.backRow}>
               <Text
                 style={
                   styles.backQuestion
                 }>
-                Remember your password?
+                Wrong email address?
               </Text>
 
               <Pressable
                 disabled={isLoading}
-                onPress={() =>
-                  navigation.navigate(
-                    'Login',
-                  )
-                }
+                onPress={handleChangeEmail}
                 style={({pressed}) => [
                   styles.backButton,
 
                   pressed &&
+                    !isLoading &&
                     styles.pressedOpacity,
                 ]}>
                 <Text
-                  style={
-                    styles.backText
-                  }>
-                  Back to Login
+                  style={styles.backText}>
+                  Change Email
                 </Text>
               </Pressable>
             </View>
@@ -694,9 +759,8 @@ const ForgotPasswordScreen = ({navigation}) => {
 
           <Text
             style={styles.footerText}>
-            For security reasons, the OTP
-            may expire after a limited
-            time.
+            Never share your OTP with
+            anyone.
           </Text>
         </View>
       </ScrollView>
@@ -704,7 +768,7 @@ const ForgotPasswordScreen = ({navigation}) => {
   );
 };
 
-export default ForgotPasswordScreen;
+export default OTP;
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -729,7 +793,6 @@ const styles = StyleSheet.create({
 
   decorativeCircle: {
     position: 'absolute',
-
     backgroundColor:
       'rgba(208, 0, 24, 0.05)',
   },
@@ -789,7 +852,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  forgotCard: {
+  otpCard: {
     alignSelf: 'center',
     backgroundColor: '#ffffff',
     borderWidth: 1,
@@ -822,6 +885,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: 6,
+  },
+
+  emailText: {
+    color: '#d00018',
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '800',
+    marginTop: 4,
   },
 
   infoBox: {
@@ -879,46 +950,50 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  inputContainer: {
-    width: '100%',
-    minHeight: 56,
-    flexDirection: 'row',
+  otpInputContainer: {
+    minHeight: 68,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#f6f7f9',
     borderWidth: 1,
     borderColor: '#e5e7eb',
     borderRadius: 16,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
   },
 
-  inputIconContainer: {
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 11,
-    backgroundColor: '#ffffff',
-    marginRight: 8,
-  },
-
-  inputImage: {
-    width: 21,
-    height: 21,
-    resizeMode: 'contain',
-    tintColor: '#d00018',
-  },
-
-  textInput: {
-    flex: 1,
-    height: 56,
+  otpInput: {
+    width: '100%',
+    height: 66,
     color: '#15171a',
-    fontSize: 15,
-    paddingHorizontal: 4,
+    fontSize: 28,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 12,
+    paddingHorizontal: 12,
     paddingVertical: 0,
     includeFontPadding: false,
   },
 
-  resetButton: {
+  otpProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+
+  otpProgressDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#d9dde4',
+    marginHorizontal: 4,
+  },
+
+  otpProgressDotActive: {
+    backgroundColor: '#d00018',
+  },
+
+  verifyButton: {
     minHeight: 57,
     flexDirection: 'row',
     alignItems: 'center',
@@ -940,7 +1015,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
   },
 
-  resetButtonPressed: {
+  verifyButtonPressed: {
     opacity: 0.88,
 
     transform: [
@@ -950,30 +1025,17 @@ const styles = StyleSheet.create({
     ],
   },
 
-  resetButtonDisabled: {
+  verifyButtonDisabled: {
     opacity: 0.65,
   },
 
-  resetButtonText: {
+  verifyButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '800',
   },
 
-  loadingContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  loadingText: {
-    marginLeft: 10,
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-
-  resetArrowContainer: {
+  arrowContainer: {
     position: 'absolute',
     right: 12,
     width: 36,
@@ -991,6 +1053,19 @@ const styles = StyleSheet.create({
     height: 21,
     resizeMode: 'contain',
     tintColor: '#ffffff',
+  },
+
+  loadingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  loadingText: {
+    marginLeft: 10,
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
   },
 
   backRow: {

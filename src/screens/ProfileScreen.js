@@ -1,4 +1,7 @@
-import React, {useState} from 'react';
+import React, {
+  useEffect,
+  useState,
+} from 'react';
 
 import {
   ActivityIndicator,
@@ -6,6 +9,7 @@ import {
   Image,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,43 +22,84 @@ import {
   useNavigation,
 } from '@react-navigation/native';
 
-import {SafeAreaView} from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+} from 'react-native-safe-area-context';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+
+const PROFILE_API_URL =
+  'https://replete-software.com/projects/kp_kitchen/api/driver/profile';
 
 const LOGOUT_API_URL =
   'https://replete-software.com/projects/kp_kitchen/api/driver/logout';
 
 /*
- * These keys must be the same keys used
- * on your Login screen.
+ * These keys must be exactly the same
+ * as the keys used in LoginScreen.js.
  */
-const AUTH_TOKEN_KEY = '@kp_kitchen_driver_token';
-const AUTH_USER_KEY = '@kp_kitchen_driver_user';
-const AUTH_EMAIL_KEY = '@kp_kitchen_driver_email';
+const AUTH_TOKEN_KEY =
+  '@kp_kitchen_driver_token';
+
+const AUTH_USER_KEY =
+  '@kp_kitchen_driver_user';
+
+const AUTH_EMAIL_KEY =
+  '@kp_kitchen_driver_email';
+
+const DEFAULT_PROFILE_IMAGE =
+  'https://images.unsplash.com/photo-1560250097-0b93528c311a';
 
 const ProfileScreen = () => {
   const {width} = useWindowDimensions();
   const navigation = useNavigation();
 
-  const [logoutPopupVisible, setLogoutPopupVisible] =
+  const [profile, setProfile] = useState({
+    id: null,
+    name: '',
+    email: '',
+    phone: '',
+    licenseNumber: '',
+    vehicleNumber: '',
+    assignedArea: '',
+    zipcode: '',
+    profileImage: '',
+  });
+
+  const [
+    profileLoading,
+    setProfileLoading,
+  ] = useState(true);
+
+  const [refreshing, setRefreshing] =
     useState(false);
 
-  const [logoutLoading, setLogoutLoading] =
-    useState(false);
+  const [
+    profileError,
+    setProfileError,
+  ] = useState('');
+
+  const [
+    logoutPopupVisible,
+    setLogoutPopupVisible,
+  ] = useState(false);
+
+  const [
+    logoutLoading,
+    setLogoutLoading,
+  ] = useState(false);
 
   const isSmallScreen = width <= 360;
 
-  const horizontalPadding = isSmallScreen
-    ? 12
-    : 16;
+  const horizontalPadding =
+    isSmallScreen ? 12 : 16;
 
   const contentWidth =
     width - horizontalPadding * 2;
 
-  const smallCardGap = isSmallScreen
-    ? 8
-    : 12;
+  const smallCardGap =
+    isSmallScreen ? 8 : 12;
 
   const smallCardWidth =
     (contentWidth - smallCardGap) / 2;
@@ -82,23 +127,206 @@ const ProfileScreen = () => {
     },
   ];
 
-  const handleEditProfile = () => {
-    Alert.alert(
-      'Edit Profile',
-      'Edit profile button pressed.',
-    );
+  /**
+   * Return the first usable value.
+   */
+  const getDisplayValue = (...values) => {
+    for (
+      let index = 0;
+      index < values.length;
+      index += 1
+    ) {
+      const value = values[index];
+
+      if (
+        value !== null &&
+        value !== undefined &&
+        value !== ''
+      ) {
+        if (
+          typeof value === 'string' ||
+          typeof value === 'number'
+        ) {
+          return String(value);
+        }
+
+        if (
+          typeof value === 'object' &&
+          value.name
+        ) {
+          return String(value.name);
+        }
+      }
+    }
+
+    return '';
   };
 
-  const handleMenuPress = item => {
-    Alert.alert(
-      item.title,
-      `${item.title} selected.`,
+  /**
+   * Support different common Laravel API
+   * response structures.
+   */
+  const extractProfileData = responseData => {
+    return (
+      responseData?.data?.driver ||
+      responseData?.data?.profile ||
+      responseData?.data?.user ||
+      responseData?.driver ||
+      responseData?.profile ||
+      responseData?.user ||
+      responseData?.data ||
+      responseData ||
+      {}
     );
   };
 
   /**
-   * Remove the entire application history
-   * and open the Login screen.
+   * Convert the API response into the fields
+   * required by this screen.
+   */
+  const normalizeProfileData = rawProfile => {
+    return {
+      id:
+        rawProfile?.id ||
+        rawProfile?.driver_id ||
+        null,
+
+      name: getDisplayValue(
+        rawProfile?.name,
+        rawProfile?.full_name,
+        rawProfile?.driver_name,
+      ),
+
+      email: getDisplayValue(
+        rawProfile?.email,
+        rawProfile?.mail,
+      ),
+
+      phone: getDisplayValue(
+        rawProfile?.phone,
+        rawProfile?.mobile,
+        rawProfile?.mobile_number,
+        rawProfile?.phone_number,
+      ),
+
+      licenseNumber: getDisplayValue(
+        rawProfile?.license_number,
+        rawProfile?.licence_number,
+        rawProfile?.licenseNumber,
+      ),
+
+      vehicleNumber: getDisplayValue(
+        rawProfile?.vehicle_number,
+        rawProfile?.vehicleNumber,
+        rawProfile?.vehicle_no,
+      ),
+
+      assignedArea: getDisplayValue(
+        rawProfile?.assigned_area,
+        rawProfile?.area,
+        rawProfile?.delivery_area,
+        rawProfile?.cluster,
+        rawProfile?.assignedArea,
+      ),
+
+      zipcode: getDisplayValue(
+        rawProfile?.zipcode,
+        rawProfile?.zip_code,
+        rawProfile?.postal_code,
+        rawProfile?.pincode,
+      ),
+
+      profileImage: getDisplayValue(
+        rawProfile?.profile_image,
+        rawProfile?.profile_photo,
+        rawProfile?.avatar,
+        rawProfile?.image,
+        rawProfile?.photo,
+      ),
+    };
+  };
+
+  /**
+   * Convert API errors into readable messages
+   * without using Array.flat().
+   */
+  const extractValidationErrors = errors => {
+    const messages = [];
+
+    if (
+      !errors ||
+      typeof errors !== 'object'
+    ) {
+      return messages;
+    }
+
+    Object.keys(errors).forEach(key => {
+      const fieldErrors = errors[key];
+
+      if (Array.isArray(fieldErrors)) {
+        fieldErrors.forEach(message => {
+          if (message) {
+            messages.push(
+              String(message),
+            );
+          }
+        });
+      } else if (fieldErrors) {
+        messages.push(
+          String(fieldErrors),
+        );
+      }
+    });
+
+    return messages;
+  };
+
+  const getProfileErrorMessage = error => {
+    if (error?.response) {
+      const responseData =
+        error.response.data;
+
+      const validationMessages =
+        extractValidationErrors(
+          responseData?.errors,
+        );
+
+      if (
+        validationMessages.length > 0
+      ) {
+        return validationMessages.join(
+          '\n',
+        );
+      }
+
+      return (
+        responseData?.message ||
+        responseData?.error ||
+        `The server returned error ${error.response.status}.`
+      );
+    }
+
+    if (
+      error?.code === 'ECONNABORTED'
+    ) {
+      return 'The profile request timed out. Please try again.';
+    }
+
+    if (error?.request) {
+      return (
+        'The profile server did not respond. ' +
+        'Please check your internet connection.'
+      );
+    }
+
+    return (
+      error?.message ||
+      'Unable to load your profile.'
+    );
+  };
+
+  /**
+   * Reset all navigation and open Login.
    */
   const goToLoginScreen = () => {
     const parentNavigation =
@@ -132,17 +360,181 @@ const ProfileScreen = () => {
   };
 
   /**
-   * Open logout confirmation popup.
+   * Delete the locally stored login session.
    */
+  const clearLocalLoginSession =
+    async () => {
+      await AsyncStorage.removeItem(
+        AUTH_TOKEN_KEY,
+      );
+
+      await AsyncStorage.removeItem(
+        AUTH_USER_KEY,
+      );
+
+      await AsyncStorage.removeItem(
+        AUTH_EMAIL_KEY,
+      );
+
+      delete axios.defaults.headers.common
+        .Authorization;
+    };
+
+  /**
+   * Fetch the authenticated driver profile.
+   */
+  const fetchProfile = async (
+    isRefresh = false,
+  ) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setProfileLoading(true);
+      }
+
+      setProfileError('');
+
+      const savedToken =
+        await AsyncStorage.getItem(
+          AUTH_TOKEN_KEY,
+        );
+
+      if (!savedToken) {
+        await clearLocalLoginSession();
+
+        goToLoginScreen();
+
+        return;
+      }
+
+      axios.defaults.headers.common
+        .Authorization =
+        `Bearer ${savedToken}`;
+
+      console.log(
+        'Profile API URL:',
+        PROFILE_API_URL,
+      );
+
+      const response = await axios.get(
+        PROFILE_API_URL,
+        {
+          headers: {
+            Accept: 'application/json',
+
+            Authorization:
+              `Bearer ${savedToken}`,
+          },
+
+          timeout: 20000,
+        },
+      );
+
+      console.log(
+        'Complete profile response:',
+        response.data,
+      );
+
+      if (
+        response.data?.status === false ||
+        response.data?.success === false
+      ) {
+        throw new Error(
+          response.data?.message ||
+            'Unable to load profile.',
+        );
+      }
+
+      const rawProfile =
+        extractProfileData(
+          response.data,
+        );
+
+      const normalizedProfile =
+        normalizeProfileData(
+          rawProfile,
+        );
+
+      setProfile(normalizedProfile);
+
+      /*
+       * Keep the stored driver information
+       * synchronized with the profile API.
+       */
+      await AsyncStorage.setItem(
+        AUTH_USER_KEY,
+        JSON.stringify(rawProfile),
+      );
+    } catch (error) {
+      console.log(
+        'Profile API error:',
+        {
+          message: error?.message,
+          code: error?.code,
+          status:
+            error?.response?.status,
+          response:
+            error?.response?.data,
+        },
+      );
+
+      if (
+        error?.response?.status === 401 ||
+        error?.response?.status === 403
+      ) {
+        try {
+          await clearLocalLoginSession();
+        } catch (storageError) {
+          console.log(
+            'Clear expired session error:',
+            storageError,
+          );
+        }
+
+        goToLoginScreen();
+
+        return;
+      }
+
+      const errorMessage =
+        getProfileErrorMessage(error);
+
+      setProfileError(errorMessage);
+    } finally {
+      setProfileLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProfile();
+  }, []);
+
+  const handleRefresh = () => {
+    fetchProfile(true);
+  };
+
+  const handleEditProfile = () => {
+    Alert.alert(
+      'Edit Profile',
+      'Edit profile functionality can be added here.',
+    );
+  };
+
+  const handleMenuPress = item => {
+    Alert.alert(
+      item.title,
+      `${item.title} selected.`,
+    );
+  };
+
   const openLogoutPopup = () => {
     if (!logoutLoading) {
       setLogoutPopupVisible(true);
     }
   };
 
-  /**
-   * Close logout confirmation popup.
-   */
   const closeLogoutPopup = () => {
     if (!logoutLoading) {
       setLogoutPopupVisible(false);
@@ -150,57 +542,7 @@ const ProfileScreen = () => {
   };
 
   /**
-   * Remove the stored authentication data.
-   */
-  const clearLocalLoginSession = async () => {
-    await AsyncStorage.removeItem(
-      AUTH_TOKEN_KEY,
-    );
-
-    await AsyncStorage.removeItem(
-      AUTH_USER_KEY,
-    );
-
-    await AsyncStorage.removeItem(
-      AUTH_EMAIL_KEY,
-    );
-
-    delete axios.defaults.headers.common
-      .Authorization;
-  };
-
-  /**
-   * Create a readable logout error message.
-   */
-  const getLogoutErrorMessage = error => {
-    if (error?.response) {
-      return (
-        error.response.data?.message ||
-        error.response.data?.error ||
-        `The server returned error ${error.response.status}.`
-      );
-    }
-
-    if (error?.code === 'ECONNABORTED') {
-      return 'The logout request timed out. Please try again.';
-    }
-
-    if (error?.request) {
-      return (
-        'The logout server did not respond. ' +
-        'Please check your internet connection and try again.'
-      );
-    }
-
-    return (
-      error?.message ||
-      'Unable to logout. Please try again.'
-    );
-  };
-
-  /**
-   * Call the logout API after the user
-   * presses "Yes, Logout".
+   * Call logout API and remove the local token.
    */
   const performLogout = async () => {
     if (logoutLoading) {
@@ -215,120 +557,127 @@ const ProfileScreen = () => {
           AUTH_TOKEN_KEY,
         );
 
-      /*
-       * When no token exists locally, clean any
-       * remaining session data and open Login.
-       */
-      if (!savedToken) {
-        await clearLocalLoginSession();
+      if (savedToken) {
+        console.log(
+          'Logout API URL:',
+          LOGOUT_API_URL,
+        );
 
-        setLogoutPopupVisible(false);
+        const response =
+          await axios.post(
+            LOGOUT_API_URL,
+            {},
+            {
+              headers: {
+                Accept:
+                  'application/json',
 
-        goToLoginScreen();
+                Authorization:
+                  `Bearer ${savedToken}`,
+              },
 
-        return;
-      }
+              timeout: 20000,
+            },
+          );
 
-      console.log(
-        'Logout API URL:',
-        LOGOUT_API_URL,
-      );
-
-      const response = await axios.post(
-        LOGOUT_API_URL,
-        {},
-        {
-          headers: {
-            Accept: 'application/json',
-            Authorization: `Bearer ${savedToken}`,
-          },
-          timeout: 20000,
-        },
-      );
-
-      console.log(
-        'Logout API response:',
-        response.data,
-      );
-
-      /*
-       * Some APIs return HTTP 200 but include
-       * status:false or success:false.
-       */
-      if (
-        response.data?.status === false ||
-        response.data?.success === false
-      ) {
-        throw new Error(
-          response.data?.message ||
-            'The server could not complete logout.',
+        console.log(
+          'Logout API response:',
+          response.data,
         );
       }
-
-      /*
-       * Clear the saved token only after the
-       * server successfully logs the driver out.
-       */
-      await clearLocalLoginSession();
-
-      setLogoutPopupVisible(false);
-
-      goToLoginScreen();
     } catch (error) {
-      console.log('Logout error:', {
-        message: error?.message,
-        code: error?.code,
-        status: error?.response?.status,
-        response: error?.response?.data,
-      });
-
       /*
-       * When the token is expired or invalid,
-       * remove it locally and return to Login.
+       * The local session is still removed
+       * when the server request fails.
        */
-      if (
-        error?.response?.status === 401 ||
-        error?.response?.status === 403
-      ) {
-        try {
-          await clearLocalLoginSession();
-        } catch (storageError) {
-          console.log(
-            'Clear invalid session error:',
-            storageError,
-          );
-        }
-
-        setLogoutPopupVisible(false);
-
-        goToLoginScreen();
-
-        return;
-      }
-
-      setLogoutPopupVisible(false);
-
-      Alert.alert(
-        'Logout Failed',
-        getLogoutErrorMessage(error),
+      console.log(
+        'Logout API error:',
+        {
+          message: error?.message,
+          status:
+            error?.response?.status,
+          response:
+            error?.response?.data,
+        },
       );
-    } finally {
-      setLogoutLoading(false);
     }
+
+    try {
+      await clearLocalLoginSession();
+    } catch (storageError) {
+      console.log(
+        'Clear logout session error:',
+        storageError,
+      );
+    }
+
+    setLogoutPopupVisible(false);
+    setLogoutLoading(false);
+
+    goToLoginScreen();
   };
+
+  const profileImageSource =
+    profile.profileImage
+      ? {
+          uri: profile.profileImage,
+        }
+      : {
+          uri: DEFAULT_PROFILE_IMAGE,
+        };
+
+  if (profileLoading) {
+    return (
+      <SafeAreaView
+        style={styles.safeArea}>
+        <View
+          style={
+            styles.profileLoadingScreen
+          }>
+          <View
+            style={
+              styles.profileLoadingIcon
+            }>
+            <ActivityIndicator
+              size="large"
+              color="#d00018"
+            />
+          </View>
+
+          <Text
+            style={
+              styles.profileLoadingTitle
+            }>
+            Loading Your Profile
+          </Text>
+
+          <Text
+            style={
+              styles.profileLoadingMessage
+            }>
+            Please wait while we retrieve
+            your driver information.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView
       style={styles.safeArea}
-      edges={['top', 'left', 'right']}>
+      edges={[
+        'top',
+        'left',
+        'right',
+      ]}>
       {/* Header */}
 
       <View style={styles.header}>
-        <View style={styles.profileSection}>
+        <View
+          style={styles.profileSection}>
           <Image
-            source={{
-              uri: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e',
-            }}
+            source={profileImageSource}
             style={styles.avatar}
           />
 
@@ -342,7 +691,17 @@ const ProfileScreen = () => {
 
       <View style={styles.screen}>
         <ScrollView
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={
+            false
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={['#d00018']}
+              tintColor="#d00018"
+            />
+          }
           contentContainerStyle={[
             styles.scrollContent,
             {
@@ -350,18 +709,76 @@ const ProfileScreen = () => {
                 horizontalPadding,
             },
           ]}>
+          {/* API Error */}
+
+          {profileError ? (
+            <View
+              style={
+                styles.profileErrorCard
+              }>
+              <View
+                style={
+                  styles.profileErrorIcon
+                }>
+                <Text
+                  style={
+                    styles.profileErrorIconText
+                  }>
+                  !
+                </Text>
+              </View>
+
+              <View
+                style={
+                  styles.profileErrorContent
+                }>
+                <Text
+                  style={
+                    styles.profileErrorTitle
+                  }>
+                  Unable to Load Profile
+                </Text>
+
+                <Text
+                  style={
+                    styles.profileErrorMessage
+                  }>
+                  {profileError}
+                </Text>
+
+                <Pressable
+                  onPress={() =>
+                    fetchProfile()
+                  }
+                  style={({pressed}) => [
+                    styles.retryButton,
+
+                    pressed &&
+                      styles.pressed,
+                  ]}>
+                  <Text
+                    style={
+                      styles.retryButtonText
+                    }>
+                    Try Again
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+
           {/* Profile Image */}
 
           <View
-            style={styles.profileTopSection}>
+            style={
+              styles.profileTopSection
+            }>
             <View
               style={
                 styles.profileImageWrapper
               }>
               <Image
-                source={{
-                  uri: 'https://images.unsplash.com/photo-1560250097-0b93528c311a',
-                }}
+                source={profileImageSource}
                 style={[
                   styles.profileImage,
 
@@ -371,18 +788,22 @@ const ProfileScreen = () => {
               />
 
               <Pressable
-                onPress={handleEditProfile}
+                onPress={
+                  handleEditProfile
+                }
                 style={({pressed}) => [
                   styles.editButton,
 
                   isSmallScreen &&
                     styles.editButtonSmall,
 
-                  pressed && styles.pressed,
+                  pressed &&
+                    styles.pressed,
                 ]}
                 accessibilityRole="button"
                 accessibilityLabel="Edit profile">
-                <Text style={styles.editIcon}>
+                <Text
+                  style={styles.editIcon}>
                   ✎
                 </Text>
               </Pressable>
@@ -396,7 +817,8 @@ const ProfileScreen = () => {
                 isSmallScreen &&
                   styles.userNameSmall,
               ]}>
-              Robert Fox
+              {profile.name ||
+                'Driver'}
             </Text>
 
             <Text
@@ -407,7 +829,8 @@ const ProfileScreen = () => {
                 isSmallScreen &&
                   styles.userEmailSmall,
               ]}>
-              robert@delivery.com
+              {profile.email ||
+                'Email not available'}
             </Text>
 
             <Text
@@ -418,8 +841,20 @@ const ProfileScreen = () => {
                 isSmallScreen &&
                   styles.userPhoneSmall,
               ]}>
-              +91 98765 43210
+              {profile.phone ||
+                'Phone not available'}
             </Text>
+
+            {profile.licenseNumber ? (
+              <Text
+                numberOfLines={1}
+                style={
+                  styles.licenseText
+                }>
+                Licence:{' '}
+                {profile.licenseNumber}
+              </Text>
+            ) : null}
           </View>
 
           {/* Assigned Area */}
@@ -428,11 +863,14 @@ const ProfileScreen = () => {
             onPress={() => {
               Alert.alert(
                 'Assigned Area',
-                'Downtown',
+
+                profile.assignedArea ||
+                  'Assigned area is not available.',
               );
             }}
             style={({pressed}) => [
               styles.assignedAreaCard,
+
               pressed && styles.pressed,
             ]}>
             <View
@@ -466,7 +904,8 @@ const ProfileScreen = () => {
                   isSmallScreen &&
                     styles.assignedAreaValueSmall,
                 ]}>
-                Downtown
+                {profile.assignedArea ||
+                  'Not assigned'}
               </Text>
             </View>
           </Pressable>
@@ -484,7 +923,8 @@ const ProfileScreen = () => {
               style={[
                 styles.detailCard,
                 {
-                  width: smallCardWidth,
+                  width:
+                    smallCardWidth,
                 },
               ]}>
               <Text
@@ -502,7 +942,7 @@ const ProfileScreen = () => {
                   isSmallScreen &&
                     styles.detailCardValueSmall,
                 ]}>
-                380015
+                {profile.zipcode || 'N/A'}
               </Text>
             </View>
 
@@ -510,7 +950,8 @@ const ProfileScreen = () => {
               style={[
                 styles.detailCard,
                 {
-                  width: smallCardWidth,
+                  width:
+                    smallCardWidth,
                 },
               ]}>
               <Text
@@ -530,7 +971,8 @@ const ProfileScreen = () => {
                   isSmallScreen &&
                     styles.detailCardValueSmall,
                 ]}>
-                GJ-01-AB-1234
+                {profile.vehicleNumber ||
+                  'N/A'}
               </Text>
             </View>
           </View>
@@ -538,7 +980,9 @@ const ProfileScreen = () => {
           {/* Settings Menu */}
 
           <View
-            style={styles.menuContainer}>
+            style={
+              styles.menuContainer
+            }>
             {menuItems.map(
               (item, index) => (
                 <Pressable
@@ -550,14 +994,17 @@ const ProfileScreen = () => {
                     styles.menuItem,
 
                     index !==
-                      menuItems.length - 1 &&
+                      menuItems.length -
+                        1 &&
                       styles.menuItemBorder,
 
                     pressed &&
                       styles.pressed,
                   ]}>
                   <View
-                    style={styles.menuLeft}>
+                    style={
+                      styles.menuLeft
+                    }>
                     <View
                       style={
                         styles.menuIconContainer
@@ -583,7 +1030,9 @@ const ProfileScreen = () => {
                   </View>
 
                   <Text
-                    style={styles.menuArrow}>
+                    style={
+                      styles.menuArrow
+                    }>
                     ›
                   </Text>
                 </Pressable>
@@ -591,7 +1040,7 @@ const ProfileScreen = () => {
             )}
           </View>
 
-          {/* Logout Button */}
+          {/* Logout */}
 
           <Pressable
             onPress={openLogoutPopup}
@@ -608,17 +1057,20 @@ const ProfileScreen = () => {
             ]}
             accessibilityRole="button"
             accessibilityLabel="Logout">
-            <Text style={styles.logoutIcon}>
+            <Text
+              style={styles.logoutIcon}>
               ⇥
             </Text>
 
-            <Text style={styles.logoutText}>
+            <Text
+              style={styles.logoutText}>
               Logout
             </Text>
           </Pressable>
 
-          <Text style={styles.versionText}>
-            App Version 2.4.1 (Build 452)
+          <Text
+            style={styles.versionText}>
+            App Version 2.4.1
           </Text>
         </ScrollView>
       </View>
@@ -631,9 +1083,13 @@ const ProfileScreen = () => {
         animationType="fade"
         statusBarTranslucent
         hardwareAccelerated
-        onRequestClose={closeLogoutPopup}>
+        onRequestClose={
+          closeLogoutPopup
+        }>
         <View
-          style={styles.logoutModalOverlay}>
+          style={
+            styles.logoutModalOverlay
+          }>
           <Pressable
             style={
               StyleSheet.absoluteFillObject
@@ -643,7 +1099,9 @@ const ProfileScreen = () => {
           />
 
           <View
-            style={styles.logoutModalCard}>
+            style={
+              styles.logoutModalCard
+            }>
             <View
               style={
                 styles.logoutModalIconOuter
@@ -662,7 +1120,9 @@ const ProfileScreen = () => {
             </View>
 
             <Text
-              style={styles.logoutModalTitle}>
+              style={
+                styles.logoutModalTitle
+              }>
               Confirm Logout
             </Text>
 
@@ -670,8 +1130,8 @@ const ProfileScreen = () => {
               style={
                 styles.logoutModalMessage
               }>
-              Are you sure you want to logout
-              from your account?
+              Are you sure you want to
+              logout from your account?
             </Text>
 
             <View
@@ -680,7 +1140,9 @@ const ProfileScreen = () => {
               }>
               <Pressable
                 disabled={logoutLoading}
-                onPress={closeLogoutPopup}
+                onPress={
+                  closeLogoutPopup
+                }
                 style={({pressed}) => [
                   styles.cancelLogoutButton,
 
@@ -779,10 +1241,12 @@ const styles = StyleSheet.create({
     elevation: 2,
 
     shadowColor: '#000000',
+
     shadowOffset: {
       width: 0,
       height: 1,
     },
+
     shadowOpacity: 0.06,
     shadowRadius: 3,
   },
@@ -848,14 +1312,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
 
     elevation: 3,
-
-    shadowColor: '#000000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
   },
 
   editButtonSmall: {
@@ -903,6 +1359,14 @@ const styles = StyleSheet.create({
 
   userPhoneSmall: {
     fontSize: 11,
+  },
+
+  licenseText: {
+    marginTop: 4,
+    color: '#6b7280',
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '500',
   },
 
   assignedAreaCard: {
@@ -1072,14 +1536,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
 
     elevation: 2,
-
-    shadowColor: '#c90017',
-    shadowOffset: {
-      width: 0,
-      height: 3,
-    },
-    shadowOpacity: 0.18,
-    shadowRadius: 5,
   },
 
   logoutButtonPressed: {
@@ -1120,6 +1576,101 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  profileLoadingScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 30,
+    backgroundColor: '#f8f9fb',
+  },
+
+  profileLoadingIcon: {
+    width: 88,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 44,
+    backgroundColor: '#ffffff',
+
+    elevation: 8,
+  },
+
+  profileLoadingTitle: {
+    marginTop: 22,
+    color: '#17191c',
+    fontSize: 21,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  profileLoadingMessage: {
+    maxWidth: 300,
+    marginTop: 8,
+    color: '#6b7280',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+
+  profileErrorCard: {
+    width: '100%',
+    flexDirection: 'row',
+    padding: 14,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#fecdd3',
+    borderRadius: 12,
+    backgroundColor: '#fff1f2',
+  },
+
+  profileErrorIcon: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 17,
+    backgroundColor: '#d00018',
+    marginRight: 12,
+  },
+
+  profileErrorIconText: {
+    color: '#ffffff',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+
+  profileErrorContent: {
+    flex: 1,
+  },
+
+  profileErrorTitle: {
+    color: '#9f1239',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  profileErrorMessage: {
+    marginTop: 3,
+    color: '#881337',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+
+  retryButton: {
+    alignSelf: 'flex-start',
+    marginTop: 9,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#d00018',
+  },
+
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
   logoutModalOverlay: {
     flex: 1,
     alignItems: 'center',
@@ -1139,15 +1690,8 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     borderRadius: 28,
     backgroundColor: '#ffffff',
-    elevation: 20,
 
-    shadowColor: '#000000',
-    shadowOffset: {
-      width: 0,
-      height: 14,
-    },
-    shadowOpacity: 0.24,
-    shadowRadius: 24,
+    elevation: 20,
   },
 
   logoutModalIconOuter: {
@@ -1167,15 +1711,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 31,
     backgroundColor: '#c90017',
-    elevation: 6,
 
-    shadowColor: '#c90017',
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowOpacity: 0.28,
-    shadowRadius: 9,
+    elevation: 6,
   },
 
   logoutModalIconText: {
@@ -1233,15 +1770,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 16,
     backgroundColor: '#c90017',
-    elevation: 4,
 
-    shadowColor: '#c90017',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.22,
-    shadowRadius: 7,
+    elevation: 4,
   },
 
   confirmLogoutButtonDisabled: {
