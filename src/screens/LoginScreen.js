@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from 'react';
+
 import {
   ActivityIndicator,
   Image,
@@ -13,27 +14,55 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+
 import {SafeAreaView} from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import {createAsyncStorage} from '@react-native-async-storage/async-storage';
 
 const LOGIN_API_URL =
   'https://replete-software.com/projects/kp_kitchen/api/driver/login';
 
-const authStorage = createAsyncStorage('kpKitchenDriverAuth');
+const AUTH_TOKEN_KEY = '@kp_kitchen_driver_token';
+const AUTH_USER_KEY = '@kp_kitchen_driver_user';
+const AUTH_EMAIL_KEY = '@kp_kitchen_driver_email';
 
-const AUTH_TOKEN_KEY = 'auth_token';
-const AUTH_USER_KEY = 'auth_user';
-const AUTH_EMAIL_KEY = 'auth_email';
+const MINIMUM_LOADING_TIME = 1500;
 
 /**
- * Call this function only when the driver
+ * Keep the loader visible for a minimum duration.
+ */
+const waitForMinimumLoadingTime = async startedAt => {
+  const elapsedTime = Date.now() - startedAt;
+
+  if (elapsedTime < MINIMUM_LOADING_TIME) {
+    await new Promise(resolve => {
+      setTimeout(
+        resolve,
+        MINIMUM_LOADING_TIME - elapsedTime,
+      );
+    });
+  }
+};
+
+/**
+ * Use this function only when the driver
  * manually presses the Logout button.
  */
 export const clearDriverLoginSession = async () => {
-  await authStorage.clear();
+  try {
+    await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+    await AsyncStorage.removeItem(AUTH_USER_KEY);
+    await AsyncStorage.removeItem(AUTH_EMAIL_KEY);
 
-  delete axios.defaults.headers.common.Authorization;
+    delete axios.defaults.headers.common.Authorization;
+  } catch (error) {
+    console.log(
+      'Clear driver login session error:',
+      error,
+    );
+
+    throw error;
+  }
 };
 
 const LoginScreen = ({navigation}) => {
@@ -71,15 +100,15 @@ const LoginScreen = ({navigation}) => {
   );
 
   /**
-   * Reset navigation so the user cannot
-   * return to Login using the back button.
+   * Redirect to HomeScreen and remove
+   * Login from the navigation history.
    */
   const navigateToHome = () => {
     navigation.reset({
       index: 0,
       routes: [
         {
-          name: 'HomeScreen',
+          name: 'MainTabs',
         },
       ],
     });
@@ -99,39 +128,30 @@ const LoginScreen = ({navigation}) => {
   };
 
   const closeErrorPopup = () => {
-    setErrorPopup(previous => ({
-      ...previous,
+    setErrorPopup(previousValue => ({
+      ...previousValue,
       visible: false,
     }));
   };
 
   /**
-   * Check for a saved login whenever this
-   * screen opens.
-   *
-   * When a token exists, the user is sent
-   * directly to MainTabs.
+   * Restore the saved login when the app opens.
    */
   useEffect(() => {
-    let mounted = true;
+    let componentMounted = true;
 
-    const restoreLogin = async () => {
+    const restoreDriverSession = async () => {
       try {
-        const savedData =
-          await authStorage.getMany([
-            AUTH_TOKEN_KEY,
-            AUTH_USER_KEY,
-            AUTH_EMAIL_KEY,
-          ]);
-
         const savedToken =
-          savedData?.[AUTH_TOKEN_KEY];
+          await AsyncStorage.getItem(
+            AUTH_TOKEN_KEY,
+          );
 
         if (savedToken) {
           axios.defaults.headers.common.Authorization =
             `Bearer ${savedToken}`;
 
-          if (mounted) {
+          if (componentMounted) {
             setCheckingSession(false);
             navigateToHome();
           }
@@ -140,74 +160,162 @@ const LoginScreen = ({navigation}) => {
         }
       } catch (error) {
         console.log(
-          'Restore login error:',
+          'Restore driver session error:',
           error,
         );
       }
 
-      if (mounted) {
+      if (componentMounted) {
         setCheckingSession(false);
       }
     };
 
-    restoreLogin();
+    restoreDriverSession();
 
     return () => {
-      mounted = false;
+      componentMounted = false;
     };
   }, []);
 
   /**
-   * Convert Axios and Laravel responses
-   * into a readable error message.
+   * Convert Laravel validation errors
+   * into a readable string without using .flat().
    */
-  const getLoginErrorMessage = error => {
-    if (!error.response) {
-      if (
-        error.code === 'ECONNABORTED'
-      ) {
-        return 'The login request timed out. Please try again.';
-      }
-
-      return 'Unable to connect to the server. Check your internet connection.';
-    }
-
-    const responseData =
-      error.response.data;
-
-    if (responseData?.errors) {
-      const messages = Object.values(
-        responseData.errors,
-      )
-        .flat()
-        .filter(Boolean);
-
-      if (messages.length > 0) {
-        return messages.join('\n');
-      }
-    }
+  const extractValidationErrors = errors => {
+    const messages = [];
 
     if (
-      error.response.status === 401 ||
-      error.response.status === 403
+      !errors ||
+      typeof errors !== 'object'
     ) {
+      return messages;
+    }
+
+    Object.keys(errors).forEach(fieldName => {
+      const fieldErrors = errors[fieldName];
+
+      if (Array.isArray(fieldErrors)) {
+        fieldErrors.forEach(message => {
+          if (message) {
+            messages.push(String(message));
+          }
+        });
+      } else if (fieldErrors) {
+        messages.push(String(fieldErrors));
+      }
+    });
+
+    return messages;
+  };
+
+  const getLoginErrorMessage = error => {
+    console.log(
+      '========== LOGIN ERROR ==========',
+    );
+
+    console.log(
+      'Error message:',
+      error?.message,
+    );
+
+    console.log(
+      'Error code:',
+      error?.code,
+    );
+
+    console.log(
+      'HTTP status:',
+      error?.response?.status,
+    );
+
+    console.log(
+      'Response data:',
+      error?.response?.data,
+    );
+
+    console.log(
+      'Request URL:',
+      error?.config?.url,
+    );
+
+    console.log(
+      '=================================',
+    );
+
+    /*
+     * Server responded with an error.
+     */
+    if (error?.response) {
+      const responseData =
+        error.response.data;
+
+      const validationMessages =
+        extractValidationErrors(
+          responseData?.errors,
+        );
+
+      if (
+        validationMessages.length > 0
+      ) {
+        return validationMessages.join(
+          '\n',
+        );
+      }
+
+      if (
+        error.response.status === 401 ||
+        error.response.status === 403
+      ) {
+        return (
+          responseData?.message ||
+          'The email address or password is incorrect.'
+        );
+      }
+
+      if (
+        error.response.status === 422
+      ) {
+        return (
+          responseData?.message ||
+          'Please check your email address and password.'
+        );
+      }
+
       return (
         responseData?.message ||
-        'The email address or password is incorrect.'
+        responseData?.error ||
+        `The server returned error ${error.response.status}.`
       );
     }
 
+    /*
+     * Request timed out.
+     */
+    if (
+      error?.code === 'ECONNABORTED'
+    ) {
+      return 'The login request timed out. Please try again.';
+    }
+
+    /*
+     * Request was sent but no response was received.
+     */
+    if (error?.request) {
+      return (
+        'The login server did not respond. ' +
+        'Please check the server, SSL certificate, or Android internet permission.'
+      );
+    }
+
+    /*
+     * JavaScript or Axios configuration error.
+     */
     return (
-      responseData?.message ||
-      responseData?.error ||
-      'Unable to complete login. Please try again.'
+      error?.message ||
+      'An unexpected error occurred during login.'
     );
   };
 
-  /**
-   * Validate fields, call the login API,
-   * save the token, and open MainTabs.
-   */
   const handleLogin = async () => {
     if (
       isLoading ||
@@ -280,17 +388,21 @@ const LoginScreen = ({navigation}) => {
           : 'KP Kitchen iOS App',
     };
 
+    const loginStartedAt = Date.now();
+
     try {
       setIsLoading(true);
 
       console.log(
-        'Login request:',
-        {
-          email: requestData.email,
-          device_name:
-            requestData.device_name,
-        },
+        'Login API URL:',
+        LOGIN_API_URL,
       );
+
+      console.log('Login request:', {
+        email: requestData.email,
+        device_name:
+          requestData.device_name,
+      });
 
       const response =
         await axios.post(
@@ -314,9 +426,9 @@ const LoginScreen = ({navigation}) => {
         response.data,
       );
 
-      /**
-       * Some Laravel APIs return HTTP 200,
-       * but success/status may still be false.
+      /*
+       * Some APIs return HTTP 200 while
+       * status or success is false.
        */
       if (
         response.data?.status ===
@@ -324,29 +436,38 @@ const LoginScreen = ({navigation}) => {
         response.data?.success ===
           false
       ) {
+        await waitForMinimumLoadingTime(
+          loginStartedAt,
+        );
+
+        setIsLoading(false);
+
         showErrorPopup(
           'Login Failed',
-
           response.data?.message ||
             'The email address or password is incorrect.',
+          'Try Again',
         );
 
         return;
       }
 
-      /**
-       * Supports common Laravel Sanctum
+      /*
+       * Support common Laravel Sanctum
        * token response formats.
        */
       const token =
         response.data?.token ||
         response.data?.access_token ||
         response.data?.plainTextToken ||
+        response.data?.plain_text_token ||
         response.data?.data?.token ||
         response.data?.data
           ?.access_token ||
         response.data?.data
-          ?.plainTextToken;
+          ?.plainTextToken ||
+        response.data?.data
+          ?.plain_text_token;
 
       const driver =
         response.data?.driver ||
@@ -356,72 +477,99 @@ const LoginScreen = ({navigation}) => {
         null;
 
       if (!token) {
+        await waitForMinimumLoadingTime(
+          loginStartedAt,
+        );
+
+        setIsLoading(false);
+
         showErrorPopup(
           'Token Not Received',
-
-          'The API did not return an authentication token. Check the complete response in Metro.',
-
+          'The login API did not return an authentication token. Check the complete API response in Metro.',
           'Close',
         );
 
         return;
       }
 
-      /**
-       * Save the token and driver details.
-       * Do not save the password.
+      /*
+       * Save login information permanently.
+       * The password is never stored.
        */
-      await authStorage.setMany({
-        [AUTH_TOKEN_KEY]:
-          String(token),
+      await AsyncStorage.setItem(
+        AUTH_TOKEN_KEY,
+        String(token),
+      );
 
-        [AUTH_USER_KEY]:
-          JSON.stringify(
-            driver || {},
-          ),
+      await AsyncStorage.setItem(
+        AUTH_USER_KEY,
+        JSON.stringify(driver || {}),
+      );
 
-        [AUTH_EMAIL_KEY]:
-          cleanEmail,
-      });
+      await AsyncStorage.setItem(
+        AUTH_EMAIL_KEY,
+        cleanEmail,
+      );
 
-      /**
-       * Add Bearer token automatically
-       * to future Axios requests.
+      /*
+       * Add the token to future Axios requests.
        */
       axios.defaults.headers.common.Authorization =
         `Bearer ${token}`;
 
+      console.log(
+        'Login session saved successfully.',
+      );
+
       setPassword('');
 
+      /*
+       * Keep the loading popup visible briefly.
+       */
+      await waitForMinimumLoadingTime(
+        loginStartedAt,
+      );
+
+      setIsLoading(false);
+
+      /*
+       * Redirect only after successful login.
+       */
       navigateToHome();
     } catch (error) {
       console.log(
-        'Login error status:',
-        error.response?.status,
+        'Axios login error:',
+        {
+          message: error?.message,
+          code: error?.code,
+          status:
+            error?.response?.status,
+          response:
+            error?.response?.data,
+          url: error?.config?.url,
+        },
       );
 
-      console.log(
-        'Login error response:',
-        error.response?.data,
+      const errorMessage =
+        getLoginErrorMessage(error);
+
+      await waitForMinimumLoadingTime(
+        loginStartedAt,
       );
 
-      console.log(
-        'Login error message:',
-        error.message,
-      );
+      setIsLoading(false);
 
       showErrorPopup(
         'Login Failed',
-        getLoginErrorMessage(error),
+        errorMessage,
+        'Try Again',
       );
-    } finally {
-      setIsLoading(false);
     }
   };
 
   /**
-   * This loader appears while checking
-   * whether the user is already logged in.
+   * Show loading while checking whether
+   * the driver is already logged in.
    */
   if (checkingSession) {
     return (
@@ -448,7 +596,7 @@ const LoginScreen = ({navigation}) => {
             style={
               styles.sessionLoaderTitle
             }>
-            Checking your session
+            Checking Your Session
           </Text>
 
           <Text
@@ -494,6 +642,8 @@ const LoginScreen = ({navigation}) => {
         bounces={false}
         overScrollMode="never">
         <View style={styles.page}>
+          {/* Decorative circles */}
+
           <View
             pointerEvents="none"
             style={[
@@ -523,6 +673,8 @@ const LoginScreen = ({navigation}) => {
               },
             ]}
           />
+
+          {/* Brand */}
 
           <View
             style={styles.brandSection}>
@@ -593,6 +745,8 @@ const LoginScreen = ({navigation}) => {
               deliveries and orders.
             </Text>
           </View>
+
+          {/* Login card */}
 
           <View
             style={[
@@ -707,9 +861,7 @@ const LoginScreen = ({navigation}) => {
 
                 <TextInput
                   value={password}
-                  onChangeText={
-                    setPassword
-                  }
+                  onChangeText={setPassword}
                   placeholder="Enter your password"
                   placeholderTextColor="#9ca3af"
                   secureTextEntry={
@@ -730,8 +882,8 @@ const LoginScreen = ({navigation}) => {
                 <Pressable
                   onPress={() => {
                     setShowPassword(
-                      previous =>
-                        !previous,
+                      previousValue =>
+                        !previousValue,
                     );
                   }}
                   disabled={isLoading}
@@ -756,7 +908,7 @@ const LoginScreen = ({navigation}) => {
               </View>
             </View>
 
-            {/* Stay signed in */}
+            {/* Login options */}
 
             <View
               style={styles.optionsRow}>
@@ -782,12 +934,12 @@ const LoginScreen = ({navigation}) => {
               </View>
 
               <Pressable
+                disabled={isLoading}
                 onPress={() => {
                   navigation.navigate(
                     'ForgotPassword',
                   );
                 }}
-                disabled={isLoading}
                 style={({pressed}) => [
                   styles.forgotButton,
 
@@ -858,7 +1010,7 @@ const LoginScreen = ({navigation}) => {
               )}
             </Pressable>
 
-            {/* Register */}
+            {/* Registration link */}
 
             <View
               style={styles.registerRow}>
@@ -871,12 +1023,12 @@ const LoginScreen = ({navigation}) => {
               </Text>
 
               <Pressable
+                disabled={isLoading}
                 onPress={() => {
                   navigation.navigate(
                     'Register',
                   );
                 }}
-                disabled={isLoading}
                 style={({pressed}) => [
                   styles.registerButton,
 
@@ -900,6 +1052,72 @@ const LoginScreen = ({navigation}) => {
           </Text>
         </View>
       </ScrollView>
+
+      {/* Login loading popup */}
+
+      <Modal
+        visible={isLoading}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        hardwareAccelerated
+        onRequestClose={() => {}}>
+        <View
+          style={
+            styles.loginLoadingOverlay
+          }>
+          <View
+            style={
+              styles.loginLoadingCard
+            }>
+            <View
+              style={
+                styles.loginLoadingIcon
+              }>
+              <ActivityIndicator
+                size="large"
+                color="#d00018"
+              />
+            </View>
+
+            <Text
+              style={
+                styles.loginLoadingTitle
+              }>
+              Signing You In
+            </Text>
+
+            <Text
+              style={
+                styles.loginLoadingMessage
+              }>
+              Please wait while we verify
+              your account and open your
+              dashboard.
+            </Text>
+
+            <View
+              style={
+                styles.loadingDotsRow
+              }>
+              <View
+                style={styles.loadingDot}
+              />
+
+              <View
+                style={[
+                  styles.loadingDot,
+                  styles.loadingDotMiddle,
+                ]}
+              />
+
+              <View
+                style={styles.loadingDot}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Error popup */}
 
@@ -1018,7 +1236,6 @@ const styles = StyleSheet.create({
 
   decorativeCircle: {
     position: 'absolute',
-
     backgroundColor:
       'rgba(208, 0, 24, 0.05)',
   },
@@ -1388,6 +1605,84 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
     marginTop: 8,
+  },
+
+  loginLoadingOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+
+    backgroundColor:
+      'rgba(17, 24, 39, 0.72)',
+  },
+
+  loginLoadingCard: {
+    width: '100%',
+    maxWidth: 360,
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 28,
+    paddingHorizontal: 28,
+    paddingTop: 34,
+    paddingBottom: 30,
+    elevation: 20,
+
+    shadowColor: '#000000',
+
+    shadowOffset: {
+      width: 0,
+      height: 14,
+    },
+
+    shadowOpacity: 0.26,
+    shadowRadius: 24,
+  },
+
+  loginLoadingIcon: {
+    width: 88,
+    height: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 44,
+    backgroundColor: '#fff1f2',
+    marginBottom: 22,
+  },
+
+  loginLoadingTitle: {
+    color: '#17191c',
+    fontSize: 23,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  loginLoadingMessage: {
+    maxWidth: 290,
+    color: '#6b7280',
+    fontSize: 14,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+
+  loadingDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+  },
+
+  loadingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#d00018',
+    opacity: 0.35,
+  },
+
+  loadingDotMiddle: {
+    marginHorizontal: 8,
+    opacity: 1,
   },
 
   modalOverlay: {

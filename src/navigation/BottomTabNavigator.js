@@ -60,12 +60,12 @@ const CustomTabBar = ({state, descriptors, navigation}) => {
       ]}>
       <View style={styles.tabBarShadow}>
         <View style={styles.tabBarContainer}>
-          <BlurView
+          {/* <BlurView
             style={StyleSheet.absoluteFill}
             blurType="light"
             blurAmount={20}
             reducedTransparencyFallbackColor="#ffffff"
-          />
+          /> */}
 
           <View style={styles.glassOverlay} />
 
