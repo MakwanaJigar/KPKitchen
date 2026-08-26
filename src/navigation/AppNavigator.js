@@ -77,6 +77,7 @@ const AppNavigator = () => {
         name="ResetPassword"
         component={ResetPassword}
       />
+      
     </Stack.Navigator>
   );
 };

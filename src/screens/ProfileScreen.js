@@ -30,10 +30,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 const PROFILE_API_URL =
-  'https://replete-software.com/projects/kp_kitchen/api/driver/profile';
+  'https://replete-software.com/projects/kp_admin/api/driver/profile';
 
 const LOGOUT_API_URL =
-  'https://replete-software.com/projects/kp_kitchen/api/driver/logout';
+  'https://replete-software.com/projects/kp_admin/api/driver/logout';
 
 /*
  * These keys must be exactly the same

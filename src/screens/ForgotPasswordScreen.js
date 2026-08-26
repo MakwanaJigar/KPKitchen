@@ -18,7 +18,7 @@ import {
 import axios from 'axios';
 
 const FORGOT_PASSWORD_API_URL =
-  'https://replete-software.com/projects/kp_kitchen/api/driver/forgot-password';
+  'https://replete-software.com/projects/kp_admin/api/driver/forgot-password';
 
 const ForgotPasswordScreen = ({navigation}) => {
   const {width, height} = useWindowDimensions();

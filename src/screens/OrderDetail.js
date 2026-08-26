@@ -816,7 +816,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
               <Text style={styles.imagePickerArrow}>›</Text>
             </Pressable>
 
-            <Pressable
+            {/* <Pressable
               onPress={handleOpenGallery}
               style={({ pressed }) => [
                 styles.imagePickerOption,
@@ -838,7 +838,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
               </View>
 
               <Text style={styles.imagePickerArrow}>›</Text>
-            </Pressable>
+            </Pressable> */}
 
             <Pressable
               onPress={() => setImagePickerVisible(false)}

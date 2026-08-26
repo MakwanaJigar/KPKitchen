@@ -20,7 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 const LOGIN_API_URL =
-  'https://replete-software.com/projects/kp_kitchen/api/driver/login';
+  'https://replete-software.com/projects/kp_admin/api/driver/login';
 
 const AUTH_TOKEN_KEY = '@kp_kitchen_driver_token';
 const AUTH_USER_KEY = '@kp_kitchen_driver_user';

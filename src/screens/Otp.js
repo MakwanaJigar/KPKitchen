@@ -18,7 +18,7 @@ import {SafeAreaView} from 'react-native-safe-area-context';
 import axios from 'axios';
 
 const VERIFY_OTP_API_URL =
-  'https://replete-software.com/projects/kp_kitchen/api/driver/verify-forgot-password-otp';
+  'https://replete-software.com/projects/kp_admin/api/driver/verify-forgot-password-otp';
 
 const OTP_LENGTH = 6;
 

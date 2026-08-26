@@ -27,7 +27,7 @@ import {
 import axios from 'axios';
 
 const REGISTER_API_URL =
-  'https://replete-software.com/projects/kp_kitchen/api/driver/register';
+  'https://replete-software.com/projects/kp_admin/api/driver/register';
 
 const SUCCESS_POPUP_DURATION = 3000;
 
