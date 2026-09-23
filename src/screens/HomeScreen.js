@@ -7,11 +7,10 @@ import React, {
 
 import {
   ActivityIndicator,
-  Image,
-  ImageBackground,
   Pressable,
   RefreshControl,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -32,18 +31,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 /* =========================================================
- * Orders API
- *
- * Same API used by your Orders screen.
+ * API
  * ========================================================= */
 
 const ORDERS_API_URL =
   'https://replete-software.com/projects/kp_admin/api/driver/assigned-orders';
 
 /* =========================================================
- * Authentication
- *
- * Same storage keys used by your Orders screen.
+ * STORAGE
  * ========================================================= */
 
 const AUTH_TOKEN_KEY =
@@ -56,106 +51,204 @@ const AUTH_EMAIL_KEY =
   '@kp_kitchen_driver_email';
 
 /* =========================================================
- * Helpers
+ * GET FIRST VALID VALUE
  * ========================================================= */
 
-const getFirstValue =
-  (...values) => {
-    for (
-      let index = 0;
-      index < values.length;
-      index += 1
+const getFirstValue = (...values) => {
+  for (
+    let index = 0;
+    index < values.length;
+    index += 1
+  ) {
+    const value =
+      values[index];
+
+    if (
+      value !== null &&
+      value !== undefined &&
+      value !== ''
     ) {
-      const value =
-        values[index];
-
-      if (
-        value !== null &&
-        value !== undefined &&
-        value !== ''
-      ) {
-        return value;
-      }
+      return value;
     }
+  }
 
-    return '';
-  };
+  return '';
+};
 
 /* =========================================================
- * Text Helper
+ * GET TEXT VALUE
  * ========================================================= */
 
-const getTextValue =
-  (...values) => {
-    const value =
-      getFirstValue(
-        ...values,
-      );
+const getTextValue = (...values) => {
+  const value =
+    getFirstValue(
+      ...values,
+    );
 
-    if (
-      value === null ||
-      value === undefined ||
-      value === ''
-    ) {
-      return '';
-    }
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+    return '';
+  }
 
-    if (
-      typeof value ===
-        'string' ||
-      typeof value ===
-        'number'
-    ) {
-      return String(
-        value,
-      );
-    }
-
-    if (
-      typeof value ===
-      'object'
-    ) {
-      return String(
-        getFirstValue(
-          value?.name,
-          value?.title,
-          value?.label,
-          value?.value,
-        ),
-      );
-    }
-
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number'
+  ) {
     return String(
       value,
-    );
+    ).trim();
+  }
+
+  if (
+    typeof value === 'object'
+  ) {
+    const objectValue =
+      getFirstValue(
+        value?.name,
+        value?.full_name,
+        value?.customer_name,
+        value?.title,
+        value?.label,
+        value?.value,
+      );
+
+    if (
+      objectValue !== null &&
+      objectValue !== undefined &&
+      objectValue !== ''
+    ) {
+      return String(
+        objectValue,
+      ).trim();
+    }
+  }
+
+  return '';
+};
+
+/* =========================================================
+ * DIRECT CUSTOMER ADDRESS
+ *
+ * IMPORTANT:
+ *
+ * Your API returns:
+ *
+ * customer_address:
+ * "D - 611 Titanium City Centre..."
+ *
+ * So we read that exact field FIRST.
+ * ========================================================= */
+
+const getCustomerAddress =
+  rawOrder => {
+    if (
+      !rawOrder
+    ) {
+      return 'Delivery address not available';
+    }
+
+    /* =============================================
+     * EXACT CURRENT API FIELD
+     * ============================================= */
+
+    if (
+      rawOrder?.customer_address !== null &&
+      rawOrder?.customer_address !== undefined &&
+      String(
+        rawOrder.customer_address,
+      ).trim() !== ''
+    ) {
+      return String(
+        rawOrder.customer_address,
+      ).trim();
+    }
+
+    /* =============================================
+     * IN CASE ORDER IS WRAPPED
+     * ============================================= */
+
+    if (
+      rawOrder?.order?.customer_address !== null &&
+      rawOrder?.order?.customer_address !== undefined &&
+      String(
+        rawOrder.order.customer_address,
+      ).trim() !== ''
+    ) {
+      return String(
+        rawOrder.order.customer_address,
+      ).trim();
+    }
+
+    /* =============================================
+     * OTHER POSSIBLE FALLBACKS
+     * ============================================= */
+
+    const fallback =
+      rawOrder?.delivery_address ??
+      rawOrder?.shipping_address ??
+      rawOrder?.address ??
+      rawOrder?.order?.delivery_address ??
+      rawOrder?.order?.shipping_address ??
+      rawOrder?.order?.address ??
+      null;
+
+    if (
+      fallback !== null &&
+      fallback !== undefined &&
+      String(
+        fallback,
+      ).trim() !== ''
+    ) {
+      return String(
+        fallback,
+      ).trim();
+    }
+
+    return 'Delivery address not available';
   };
 
 /* =========================================================
- * Extract Orders
+ * EXTRACT ORDERS ARRAY
  * ========================================================= */
 
 const extractOrdersArray =
   responseData => {
-    const possibleArrays =
-      [
-        responseData?.data
-          ?.orders?.data,
+    const possibleArrays = [
+      /*
+       * EXACT CURRENT API:
+       *
+       * {
+       *   success: true,
+       *   orders: [...]
+       * }
+       */
+      responseData?.orders,
 
-        responseData?.data
-          ?.orders,
+      responseData
+        ?.data
+        ?.orders
+        ?.data,
 
-        responseData?.orders
-          ?.data,
+      responseData
+        ?.data
+        ?.orders,
 
-        responseData?.orders,
+      responseData
+        ?.orders
+        ?.data,
 
-        responseData?.data
-          ?.data,
+      responseData
+        ?.data
+        ?.data,
 
-        responseData?.data,
+      responseData
+        ?.data,
 
-        responseData,
-      ];
+      responseData,
+    ];
 
     for (
       let index = 0;
@@ -165,9 +258,7 @@ const extractOrdersArray =
     ) {
       if (
         Array.isArray(
-          possibleArrays[
-            index
-          ],
+          possibleArrays[index],
         )
       ) {
         return possibleArrays[
@@ -180,7 +271,7 @@ const extractOrdersArray =
   };
 
 /* =========================================================
- * Normalize Status
+ * STATUS
  * ========================================================= */
 
 const normalizeStatusValue =
@@ -196,11 +287,7 @@ const normalizeStatusValue =
       );
 
 /* =========================================================
- * Filter Status
- *
- * Matches your Orders page:
- * completed orders = Delivered
- * everything else = Pending
+ * FILTER STATUS
  * ========================================================= */
 
 const getFilterStatus =
@@ -210,13 +297,12 @@ const getFilterStatus =
         statusValue,
       );
 
-    const deliveredStatuses =
-      [
-        'delivered',
-        'completed',
-        'complete',
-        'delivery_completed',
-      ];
+    const deliveredStatuses = [
+      'delivered',
+      'completed',
+      'complete',
+      'delivery_completed',
+    ];
 
     return deliveredStatuses.includes(
       status,
@@ -226,7 +312,7 @@ const getFilterStatus =
   };
 
 /* =========================================================
- * Ready Status
+ * READY STATUS
  * ========================================================= */
 
 const isReadyStatus =
@@ -249,62 +335,28 @@ const isReadyStatus =
   };
 
 /* =========================================================
- * Format Amount
+ * OUT FOR DELIVERY
  * ========================================================= */
 
-const formatAmount =
-  amountValue => {
-    if (
-      amountValue ===
-        null ||
-      amountValue ===
-        undefined ||
-      amountValue ===
-        ''
-    ) {
-      return '₹0';
-    }
-
-    const amountText =
-      String(
-        amountValue,
+const isOutForDeliveryStatus =
+  statusValue => {
+    const status =
+      normalizeStatusValue(
+        statusValue,
       );
 
-    if (
-      amountText.includes(
-        '₹',
-      )
-    ) {
-      return amountText;
-    }
-
-    const numericValue =
-      Number(
-        amountText.replace(
-          /[^\d.-]/g,
-          '',
-        ),
-      );
-
-    if (
-      Number.isFinite(
-        numericValue,
-      )
-    ) {
-      return `₹${numericValue.toLocaleString(
-        'en-IN',
-        {
-          maximumFractionDigits:
-            2,
-        },
-      )}`;
-    }
-
-    return `₹${amountText}`;
+    return [
+      'out_for_delivery',
+      'on_the_way',
+      'on_the_route',
+      'in_delivery',
+    ].includes(
+      status,
+    );
   };
 
 /* =========================================================
- * Format Time
+ * FORMAT TIME
  * ========================================================= */
 
 const formatTime =
@@ -320,10 +372,6 @@ const formatTime =
         timeValue,
       );
 
-    /*
-     * Try full date first.
-     */
-
     const parsedDate =
       new Date(
         rawTime,
@@ -337,24 +385,21 @@ const formatTime =
         '-',
       )
     ) {
-      return parsedDate.toLocaleTimeString(
-        'en-US',
-        {
-          hour:
-            '2-digit',
+      return parsedDate
+        .toLocaleTimeString(
+          'en-US',
+          {
+            hour:
+              '2-digit',
 
-          minute:
-            '2-digit',
+            minute:
+              '2-digit',
 
-          hour12:
-            true,
-        },
-      );
+            hour12:
+              true,
+          },
+        );
     }
-
-    /*
-     * HH:mm
-     */
 
     const timeMatch =
       rawTime.match(
@@ -394,8 +439,7 @@ const formatTime =
     if (
       hours === 0
     ) {
-      hours =
-        12;
+      hours = 12;
     }
 
     return `${String(
@@ -407,98 +451,49 @@ const formatTime =
   };
 
 /* =========================================================
- * Format Address
+ * FORMAT DATE
  * ========================================================= */
 
-const formatAddress =
-  addressValue => {
+const formatDate =
+  dateValue => {
     if (
-      !addressValue
+      !dateValue
     ) {
       return '';
     }
 
+    const date =
+      new Date(
+        dateValue,
+      );
+
     if (
-      typeof addressValue ===
-        'string' ||
-      typeof addressValue ===
-        'number'
+      Number.isNaN(
+        date.getTime(),
+      )
     ) {
       return String(
-        addressValue,
+        dateValue,
       );
     }
 
-    if (
-      typeof addressValue ===
-      'object'
-    ) {
-      const addressParts =
-        [
-          addressValue
-            ?.address_line_1,
+    return date.toLocaleDateString(
+      'en-US',
+      {
+        day:
+          '2-digit',
 
-          addressValue
-            ?.address_line1,
+        month:
+          'short',
 
-          addressValue
-            ?.address1,
-
-          addressValue
-            ?.address_line_2,
-
-          addressValue
-            ?.address_line2,
-
-          addressValue
-            ?.address2,
-
-          addressValue
-            ?.landmark,
-
-          addressValue
-            ?.area,
-
-          addressValue
-            ?.city,
-
-          addressValue
-            ?.state,
-
-          addressValue
-            ?.zipcode,
-
-          addressValue
-            ?.zip_code,
-
-          addressValue
-            ?.pincode,
-
-          addressValue
-            ?.postal_code,
-        ].filter(
-          part =>
-            part !== null &&
-            part !==
-              undefined &&
-            String(
-              part,
-            ).trim() !==
-              '',
-        );
-
-      return addressParts.join(
-        ', ',
-      );
-    }
-
-    return String(
-      addressValue,
+        year:
+          'numeric',
+      },
     );
   };
 
 /* =========================================================
- * Format Order Number
+ * FORMAT ORDER NUMBER
  * ========================================================= */
 
 const formatOrderNumber =
@@ -526,19 +521,16 @@ const formatOrderNumber =
   };
 
 /* =========================================================
- * Order Created Time
- *
- * Used for sorting recent orders.
+ * ORDER TIMESTAMP
  * ========================================================= */
 
 const getOrderTimestamp =
   rawOrder => {
     const value =
       getFirstValue(
-        rawOrder?.created_at,
         rawOrder?.updated_at,
-        rawOrder?.order_date,
-        rawOrder?.assigned_at,
+        rawOrder?.created_at,
+        rawOrder?.date,
       );
 
     if (
@@ -560,183 +552,514 @@ const getOrderTimestamp =
   };
 
 /* =========================================================
- * Normalize Order
- *
- * Based on same structure as your Orders screen.
+ * NORMALIZE ADD ONS
  * ========================================================= */
 
-const normalizeOrder =
-  (
-    rawOrder,
-    index,
-  ) => {
-    const customer =
-      rawOrder?.customer ||
-      rawOrder?.user ||
-      rawOrder
-        ?.customer_details ||
-      rawOrder
-        ?.customerDetail ||
-      {};
+const normalizeAddOns =
+  rawOrder => {
+    const addOns =
+      Array.isArray(
+        rawOrder?.add_ons,
+      )
+        ? rawOrder.add_ons
+        : Array.isArray(
+            rawOrder?.addons,
+          )
+          ? rawOrder.addons
+          : Array.isArray(
+              rawOrder?.adons,
+            )
+            ? rawOrder.adons
+            : [];
 
-    const addressObject =
-      getFirstValue(
-        rawOrder
-          ?.delivery_address,
+    return addOns.map(
+      (
+        item,
+        index,
+      ) => ({
+        id:
+          item?.id ??
+          index,
 
-        rawOrder
-          ?.shipping_address,
+        name:
+          item?.name ??
+          item?.title ??
+          `Add-on ${index + 1}`,
 
-        rawOrder?.address,
-
-        rawOrder
-          ?.customer_address,
-
-        customer
-          ?.delivery_address,
-
-        customer?.address,
-      );
-
-    const statusValue =
-      getTextValue(
-        rawOrder
-          ?.delivery_status,
-
-        rawOrder
-          ?.order_status,
-
-        rawOrder?.status,
-
-        rawOrder
-          ?.status_name,
-      );
-
-    const filterStatus =
-      getFilterStatus(
-        statusValue,
-      );
-
-    const orderId =
-      getFirstValue(
-        rawOrder?.id,
-
-        rawOrder
-          ?.order_id,
-
-        rawOrder
-          ?.orderId,
-
-        index + 1,
-      );
-
-    const orderNumber =
-      getFirstValue(
-        rawOrder
-          ?.order_number,
-
-        rawOrder
-          ?.order_no,
-
-        rawOrder
-          ?.orderNumber,
-
-        rawOrder
-          ?.invoice_number,
-
-        rawOrder?.id,
-
-        index + 1,
-      );
-
-    return {
-      id:
-        String(
-          orderId,
-        ),
-
-      rawOrder,
-
-      orderNumber:
-        formatOrderNumber(
-          orderNumber,
-        ),
-
-      status:
-        statusValue ||
-        filterStatus,
-
-      filterStatus,
-
-      time:
-        formatTime(
-          getFirstValue(
-            rawOrder
-              ?.delivery_time,
-
-            rawOrder
-              ?.scheduled_time,
-
-            rawOrder
-              ?.order_time,
-
-            rawOrder
-              ?.pickup_time,
-
-            rawOrder
-              ?.created_at,
-          ),
-        ),
-
-      amount:
-        formatAmount(
-          getFirstValue(
-            rawOrder
-              ?.grand_total,
-
-            rawOrder
-              ?.total_amount,
-
-            rawOrder
-              ?.payable_amount,
-
-            rawOrder
-              ?.total,
-
-            rawOrder
-              ?.amount,
-
-            rawOrder
-              ?.net_amount,
-
+        price:
+          Number(
+            item?.price ??
             0,
-          ),
-        ),
+          ) || 0,
 
-      customerName:
-        rawOrder
-          ?.customer_name ||
-        rawOrder?.name ||
-        customer?.name ||
-        customer
-          ?.full_name ||
-        'Customer',
-
-      address:
-        formatAddress(
-          addressObject,
-        ) ||
-        'Delivery address not available',
-
-      timestamp:
-        getOrderTimestamp(
-          rawOrder,
-        ),
-    };
+        qty:
+          Number(
+            item?.qty ??
+            item?.quantity ??
+            1,
+          ) || 1,
+      }),
+    );
   };
 
 /* =========================================================
- * Home Screen
+ * NORMALIZE ORDER
+ *
+ * EXACT CURRENT PAYLOAD:
+ *
+ * {
+ *   "id": "ORDKAAP3RAY",
+ *   "customer": "Jigar Makwana",
+ *   "customer_phone": "...",
+ *   "customer_address": "...",
+ *   "pincode": "3000",
+ *   ...
+ * }
+ * ========================================================= */
+
+const normalizeOrder = (
+  rawOrder,
+  index,
+) => {
+  const actualOrder =
+    rawOrder?.order ??
+    rawOrder;
+
+  /* =====================================================
+   * ORDER ID
+   * ===================================================== */
+
+  const orderId =
+    getFirstValue(
+      actualOrder?.id,
+      actualOrder?.order_id,
+      actualOrder?.orderId,
+
+      rawOrder?.id,
+      rawOrder?.order_id,
+      rawOrder?.orderId,
+
+      index + 1,
+    );
+
+  /* =====================================================
+   * ORDER NUMBER
+   * ===================================================== */
+
+  const orderNumber =
+    getFirstValue(
+      actualOrder?.order_number,
+      actualOrder?.order_no,
+      actualOrder?.orderNumber,
+
+      /*
+       * Your current API uses ID as
+       * order number.
+       */
+      actualOrder?.id,
+
+      rawOrder?.order_number,
+      rawOrder?.order_no,
+      rawOrder?.id,
+
+      orderId,
+    );
+
+  /* =====================================================
+   * CUSTOMER NAME
+   *
+   * Exact API:
+   *
+   * customer: "Jigar Makwana"
+   * ===================================================== */
+
+  const customerName =
+    getTextValue(
+      actualOrder?.customer,
+
+      actualOrder?.customer_name,
+
+      rawOrder?.customer,
+
+      rawOrder?.customer_name,
+    ) ||
+    'Customer';
+
+  /* =====================================================
+   * CUSTOMER ADDRESS
+   *
+   * IMPORTANT FIX
+   * ===================================================== */
+
+  const customerAddress =
+    getCustomerAddress(
+      rawOrder,
+    );
+
+  /* =====================================================
+   * ADDRESS DEBUG
+   *
+   * Keep this temporarily.
+   * ===================================================== */
+
+  console.log(
+    'ADDRESS DEBUG:',
+    {
+      orderId,
+
+      directAddress:
+        rawOrder
+          ?.customer_address,
+
+      actualOrderAddress:
+        actualOrder
+          ?.customer_address,
+
+      resolvedAddress:
+        customerAddress,
+    },
+  );
+
+  /* =====================================================
+   * PHONE
+   *
+   * INTERNAL ONLY.
+   *
+   * NOT DISPLAYED ON HOME.
+   * ===================================================== */
+
+  const customerPhone =
+    getTextValue(
+      actualOrder
+        ?.customer_phone,
+
+      rawOrder
+        ?.customer_phone,
+
+      actualOrder
+        ?.customer_mobile,
+
+      rawOrder
+        ?.customer_mobile,
+    );
+
+  /* =====================================================
+   * PINCODE
+   * ===================================================== */
+
+  const pincode =
+    getTextValue(
+      actualOrder?.pincode,
+
+      rawOrder?.pincode,
+
+      actualOrder?.zipcode,
+
+      rawOrder?.zipcode,
+
+      actualOrder?.zip_code,
+
+      rawOrder?.zip_code,
+
+      actualOrder?.postal_code,
+
+      rawOrder?.postal_code,
+    ) ||
+    'N/A';
+
+  /* =====================================================
+   * AREA
+   * ===================================================== */
+
+  const area =
+    getTextValue(
+      actualOrder?.area,
+
+      rawOrder?.area,
+    );
+
+  /* =====================================================
+   * DRIVER
+   * ===================================================== */
+
+  const driverName =
+    getTextValue(
+      actualOrder?.driver,
+
+      rawOrder?.driver,
+
+      actualOrder?.driver_name,
+
+      rawOrder?.driver_name,
+    );
+
+  /* =====================================================
+   * TIFFIN
+   * ===================================================== */
+
+  const tiffinName =
+    getTextValue(
+      actualOrder?.tiffin,
+
+      rawOrder?.tiffin,
+
+      actualOrder?.tiffin_name,
+
+      rawOrder?.tiffin_name,
+    ) ||
+    'Tiffin';
+
+  const tiffinId =
+    getFirstValue(
+      actualOrder?.tiffin_id,
+
+      rawOrder?.tiffin_id,
+    );
+
+  /* =====================================================
+   * QUANTITY
+   * ===================================================== */
+
+  const quantity =
+    Number(
+      getFirstValue(
+        actualOrder?.quantity,
+
+        rawOrder?.quantity,
+
+        1,
+      ),
+    ) || 1;
+
+  /* =====================================================
+   * AMOUNT
+   * ===================================================== */
+
+  const amount =
+    Number(
+      getFirstValue(
+        actualOrder?.amount,
+
+        rawOrder?.amount,
+
+        actualOrder
+          ?.total_amount,
+
+        rawOrder
+          ?.total_amount,
+
+        0,
+      ),
+    ) || 0;
+
+  /* =====================================================
+   * STATUS
+   * ===================================================== */
+
+  const statusValue =
+    getTextValue(
+      actualOrder?.status,
+
+      rawOrder?.status,
+
+      actualOrder
+        ?.delivery_status,
+
+      rawOrder
+        ?.delivery_status,
+
+      actualOrder
+        ?.order_status,
+
+      rawOrder
+        ?.order_status,
+    ) ||
+    'Pending';
+
+  const filterStatus =
+    getFilterStatus(
+      statusValue,
+    );
+
+  /* =====================================================
+   * DATE
+   * ===================================================== */
+
+  const orderDate =
+    getTextValue(
+      actualOrder?.date,
+
+      rawOrder?.date,
+
+      actualOrder?.order_date,
+
+      rawOrder?.order_date,
+    );
+
+  /* =====================================================
+   * NOTES
+   *
+   * Exact API:
+   * note
+   * ===================================================== */
+
+  const notes =
+    getTextValue(
+      actualOrder?.note,
+
+      rawOrder?.note,
+
+      actualOrder?.notes,
+
+      rawOrder?.notes,
+
+      actualOrder
+        ?.order_notes,
+
+      rawOrder
+        ?.order_notes,
+    );
+
+  /* =====================================================
+   * ADD ONS
+   * ===================================================== */
+
+  const addOns =
+    normalizeAddOns(
+      actualOrder,
+    );
+
+  /* =====================================================
+   * RETURN
+   * ===================================================== */
+
+  return {
+    id:
+      String(
+        orderId,
+      ),
+
+    rawOrder,
+
+    actualOrder,
+
+    /* ORDER */
+
+    orderNumber:
+      formatOrderNumber(
+        orderNumber,
+      ),
+
+    status:
+      statusValue,
+
+    filterStatus,
+
+    date:
+      orderDate,
+
+    formattedDate:
+      formatDate(
+        orderDate,
+      ),
+
+    timestamp:
+      getOrderTimestamp(
+        rawOrder,
+      ),
+
+    /* CUSTOMER */
+
+    customerId:
+      actualOrder
+        ?.customer_id ??
+      rawOrder
+        ?.customer_id ??
+      null,
+
+    customerName,
+
+    /*
+     * PHONE INTERNAL ONLY
+     */
+    mobile:
+      customerPhone,
+
+    /*
+     * ADDRESS
+     */
+    address:
+      customerAddress,
+
+    zipcode:
+      pincode,
+
+    area,
+
+    /* DRIVER */
+
+    driverId:
+      actualOrder
+        ?.driver_id ??
+      rawOrder
+        ?.driver_id ??
+      null,
+
+    driverName,
+
+    /* TIFFIN */
+
+    tiffinId,
+
+    tiffinName,
+
+    quantity,
+
+    amount,
+
+    addOns,
+
+    selections:
+      actualOrder
+        ?.selections ??
+      rawOrder
+        ?.selections ??
+      null,
+
+    notes,
+
+    proofOfDeliveryPhoto:
+      actualOrder
+        ?.proof_of_delivery_photo ??
+      rawOrder
+        ?.proof_of_delivery_photo ??
+      null,
+
+    proofOfDeliverySignature:
+      actualOrder
+        ?.proof_of_delivery_signature ??
+      rawOrder
+        ?.proof_of_delivery_signature ??
+      null,
+
+    createdAt:
+      actualOrder
+        ?.created_at ??
+      rawOrder
+        ?.created_at ??
+      null,
+
+    updatedAt:
+      actualOrder
+        ?.updated_at ??
+      rawOrder
+        ?.updated_at ??
+      null,
+  };
+};
+
+/* =========================================================
+ * HOME SCREEN
  * ========================================================= */
 
 const HomeScreen = ({
@@ -747,9 +1070,9 @@ const HomeScreen = ({
   } =
     useWindowDimensions();
 
-  /* =====================================================
-   * State
-   * ===================================================== */
+  /* =======================================================
+   * STATE
+   * ======================================================= */
 
   const [
     orders,
@@ -775,9 +1098,17 @@ const HomeScreen = ({
   ] =
     useState('');
 
-  /* =====================================================
-   * Responsive
-   * ===================================================== */
+  const [
+    driverName,
+    setDriverName,
+  ] =
+    useState(
+      'Delivery Partner',
+    );
+
+  /* =======================================================
+   * RESPONSIVE
+   * ======================================================= */
 
   const isSmallScreen =
     width <= 360;
@@ -795,74 +1126,161 @@ const HomeScreen = ({
   const statisticCardWidth =
     (
       width -
-      screenPadding *
-        2 -
+      screenPadding * 2 -
       cardGap -
       2
     ) /
     2;
 
-  /* =====================================================
-   * Clear Login
-   * ===================================================== */
+  /* =======================================================
+   * LOAD DRIVER INFO
+   * ======================================================= */
+
+  const loadDriverInfo =
+    useCallback(
+      async () => {
+        try {
+          const storedUser =
+            await AsyncStorage.getItem(
+              AUTH_USER_KEY,
+            );
+
+          if (
+            !storedUser
+          ) {
+            return;
+          }
+
+          const parsedUser =
+            JSON.parse(
+              storedUser,
+            );
+
+          const name =
+            getTextValue(
+              parsedUser?.name,
+
+              parsedUser?.full_name,
+
+              parsedUser?.driver_name,
+
+              parsedUser
+                ?.data
+                ?.name,
+            );
+
+          if (
+            name
+          ) {
+            setDriverName(
+              name,
+            );
+          }
+        } catch (
+          error
+        ) {
+          console.log(
+            'DRIVER INFO ERROR:',
+            error,
+          );
+        }
+      },
+      [],
+    );
+
+  /* =======================================================
+   * CLEAR SESSION
+   * ======================================================= */
 
   const clearLoginSession =
     async () => {
-      await AsyncStorage.removeItem(
-        AUTH_TOKEN_KEY,
-      );
+      try {
+        await AsyncStorage.removeItem(
+          AUTH_TOKEN_KEY,
+        );
 
-      await AsyncStorage.removeItem(
-        AUTH_USER_KEY,
-      );
+        await AsyncStorage.removeItem(
+          AUTH_USER_KEY,
+        );
 
-      await AsyncStorage.removeItem(
-        AUTH_EMAIL_KEY,
-      );
+        await AsyncStorage.removeItem(
+          AUTH_EMAIL_KEY,
+        );
 
-      delete axios
-        .defaults
-        .headers
-        .common
-        .Authorization;
+        if (
+          axios.defaults &&
+          axios.defaults.headers &&
+          axios.defaults.headers
+            .common
+        ) {
+          delete axios.defaults
+            .headers
+            .common
+            .Authorization;
+        }
+      } catch (
+        error
+      ) {
+        console.log(
+          'CLEAR SESSION ERROR:',
+          error,
+        );
+      }
     };
 
-  /* =====================================================
-   * Login
-   * ===================================================== */
+  /* =======================================================
+   * GO TO LOGIN
+   * ======================================================= */
 
   const goToLoginScreen =
-    () => {
-      const parentNavigation =
-        navigation.getParent?.();
+    useCallback(
+      () => {
+        let targetNavigation =
+          navigation;
 
-      const target =
-        parentNavigation ||
-        navigation;
+        let parent =
+          targetNavigation
+            .getParent?.();
 
-      target.dispatch(
-        CommonActions.reset({
-          index:
-            0,
+        while (
+          parent
+        ) {
+          targetNavigation =
+            parent;
 
-          routes: [
-            {
-              name:
-                'Login',
-            },
-          ],
-        }),
-      );
-    };
+          parent =
+            targetNavigation
+              .getParent?.();
+        }
 
-  /* =====================================================
-   * Fetch Orders
-   * ===================================================== */
+        targetNavigation.dispatch(
+          CommonActions.reset({
+            index:
+              0,
+
+            routes: [
+              {
+                name:
+                  'Login',
+              },
+            ],
+          }),
+        );
+      },
+      [
+        navigation,
+      ],
+    );
+
+  /* =======================================================
+   * FETCH ORDERS
+   * ======================================================= */
 
   const fetchOrders =
     useCallback(
       async (
-        refreshing = false,
+        refreshing =
+          false,
       ) => {
         try {
           if (
@@ -881,10 +1299,6 @@ const HomeScreen = ({
             '',
           );
 
-          /* =========================================
-           * Token
-           * ========================================= */
-
           const savedToken =
             await AsyncStorage.getItem(
               AUTH_TOKEN_KEY,
@@ -897,20 +1311,21 @@ const HomeScreen = ({
               [],
             );
 
-            setIsLoading(
-              false,
-            );
+            await clearLoginSession();
+
+            goToLoginScreen();
 
             return;
           }
 
-          /* =========================================
+          /* =============================================
            * API
-           * ========================================= */
+           * ============================================= */
 
           const response =
             await axios.get(
               ORDERS_API_URL,
+
               {
                 headers: {
                   Accept:
@@ -928,18 +1343,35 @@ const HomeScreen = ({
           const responseData =
             response.data;
 
+          console.log(
+            '========================================',
+          );
+
+          console.log(
+            'DRIVER ASSIGNED ORDERS RAW RESPONSE:',
+          );
+
+          console.log(
+            JSON.stringify(
+              responseData,
+              null,
+              2,
+            ),
+          );
+
+          console.log(
+            '========================================',
+          );
+
           if (
-            responseData
-              ?.status ===
+            responseData?.status ===
               false ||
-            responseData
-              ?.success ===
+            responseData?.success ===
               false
           ) {
             throw new Error(
-              responseData
-                ?.message ||
-                'Unable to load orders.',
+              responseData?.message ||
+              'Unable to load orders.',
             );
           }
 
@@ -960,36 +1392,35 @@ const HomeScreen = ({
                 ),
             );
 
-          /* =========================================
-           * Latest First
-           * ========================================= */
-
           normalizedOrders =
             normalizedOrders.sort(
               (
                 first,
                 second,
-              ) => {
-                if (
-                  second.timestamp !==
-                  first.timestamp
-                ) {
-                  return (
-                    second.timestamp -
-                    first.timestamp
-                  );
-                }
-
-                return (
-                  Number(
-                    second.id,
-                  ) -
-                  Number(
-                    first.id,
-                  )
-                );
-              },
+              ) =>
+                second.timestamp -
+                first.timestamp,
             );
+
+          console.log(
+            '========================================',
+          );
+
+          console.log(
+            'NORMALIZED HOME ORDERS:',
+          );
+
+          console.log(
+            JSON.stringify(
+              normalizedOrders,
+              null,
+              2,
+            ),
+          );
+
+          console.log(
+            '========================================',
+          );
 
           setOrders(
             normalizedOrders,
@@ -1015,10 +1446,6 @@ const HomeScreen = ({
             },
           );
 
-          /* =========================================
-           * Session expired
-           * ========================================= */
-
           if (
             error
               ?.response
@@ -1029,16 +1456,7 @@ const HomeScreen = ({
               ?.status ===
               403
           ) {
-            try {
-              await clearLoginSession();
-            } catch (
-              storageError
-            ) {
-              console.log(
-                'CLEAR SESSION ERROR:',
-                storageError,
-              );
-            }
+            await clearLoginSession();
 
             goToLoginScreen();
 
@@ -1050,8 +1468,13 @@ const HomeScreen = ({
               ?.response
               ?.data
               ?.message ||
-              error?.message ||
-              'Unable to load recent orders.',
+            error
+              ?.response
+              ?.data
+              ?.error ||
+            error
+              ?.message ||
+            'Unable to load recent orders.',
           );
         } finally {
           setIsLoading(
@@ -1064,45 +1487,47 @@ const HomeScreen = ({
         }
       },
       [
-        navigation,
+        goToLoginScreen,
       ],
     );
 
-  /* =====================================================
-   * Initial Fetch
-   * ===================================================== */
+  /* =======================================================
+   * INITIAL LOAD
+   * ======================================================= */
 
   useEffect(
     () => {
+      loadDriverInfo();
+
       fetchOrders();
     },
     [
       fetchOrders,
+      loadDriverInfo,
     ],
   );
 
-  /* =====================================================
-   * Refresh Whenever Home Gets Focus
-   *
-   * Important:
-   * when status changes on Orders page,
-   * Home reflects the latest data.
-   * ===================================================== */
+  /* =======================================================
+   * FOCUS
+   * ======================================================= */
 
   useFocusEffect(
     useCallback(
       () => {
+        loadDriverInfo();
+
         fetchOrders();
       },
       [
         fetchOrders,
+        loadDriverInfo,
       ],
     ),
   );
 
-  /* =====================================================
-   * Counts
-   * ===================================================== */
+  /* =======================================================
+   * COUNTS
+   * ======================================================= */
 
   const totalAssigned =
     useMemo(
@@ -1118,23 +1543,8 @@ const HomeScreen = ({
       () =>
         orders.filter(
           order =>
-            order
-              .filterStatus ===
+            order.filterStatus ===
             'Delivered',
-        ).length,
-      [
-        orders,
-      ],
-    );
-
-  const pendingCount =
-    useMemo(
-      () =>
-        orders.filter(
-          order =>
-            order
-              .filterStatus ===
-            'Pending',
         ).length,
       [
         orders,
@@ -1155,9 +1565,39 @@ const HomeScreen = ({
       ],
     );
 
-  /* =====================================================
-   * Dynamic Statistics
-   * ===================================================== */
+  const outForDeliveryCount =
+    useMemo(
+      () =>
+        orders.filter(
+          order =>
+            isOutForDeliveryStatus(
+              order.status,
+            ),
+        ).length,
+      [
+        orders,
+      ],
+    );
+
+  const pendingCount =
+    useMemo(
+      () =>
+        orders.filter(
+          order =>
+            order.filterStatus ===
+              'Pending' &&
+            !isOutForDeliveryStatus(
+              order.status,
+            ),
+        ).length,
+      [
+        orders,
+      ],
+    );
+
+  /* =======================================================
+   * STATISTICS
+   * ======================================================= */
 
   const statistics =
     useMemo(
@@ -1178,16 +1618,24 @@ const HomeScreen = ({
             '#111111',
 
           badgeText:
-            totalAssigned >
-            0
+            totalAssigned > 0
               ? 'In progress'
               : 'No orders',
 
           badgeBackground:
-            '#dfe4f5',
+            '#eef1f7',
 
           badgeTextColor:
-            '#68718d',
+            '#59677f',
+
+          symbol:
+            '▦',
+
+          iconBackground:
+            '#edf0f7',
+
+          iconColor:
+            '#576783',
         },
 
         {
@@ -1206,8 +1654,7 @@ const HomeScreen = ({
             '#c40016',
 
           badgeText:
-            readyCount >
-            0
+            readyCount > 0
               ? 'Pick up now'
               : 'None ready',
 
@@ -1216,6 +1663,15 @@ const HomeScreen = ({
 
           badgeTextColor:
             '#d9001b',
+
+          symbol:
+            '✓',
+
+          iconBackground:
+            '#fff0f1',
+
+          iconColor:
+            '#d00018',
         },
 
         {
@@ -1234,8 +1690,7 @@ const HomeScreen = ({
             '#007c3d',
 
           badgeText:
-            deliveredCount >
-            0
+            deliveredCount > 0
               ? 'Success'
               : 'No delivery',
 
@@ -1244,6 +1699,15 @@ const HomeScreen = ({
 
           badgeTextColor:
             '#07803f',
+
+          symbol:
+            '✓',
+
+          iconBackground:
+            '#e8f7ee',
+
+          iconColor:
+            '#07803f',
         },
 
         {
@@ -1251,52 +1715,59 @@ const HomeScreen = ({
             4,
 
           title:
-            'Pending',
+            outForDeliveryCount >
+            0
+              ? 'Out for Delivery'
+              : 'Pending',
 
           value:
             String(
-              pendingCount,
+              outForDeliveryCount >
+              0
+                ? outForDeliveryCount
+                : pendingCount,
             ),
 
           valueColor:
-            pendingCount >
-            0
-              ? '#c40016'
-              : '#777777',
+            '#c40016',
 
           badgeText:
-            pendingCount >
+            outForDeliveryCount >
             0
-              ? 'Action needed'
-              : 'All clear',
+              ? 'On route'
+              : pendingCount >
+                0
+                ? 'Action needed'
+                : 'All clear',
 
           badgeBackground:
-            pendingCount >
-            0
-              ? '#fde8ea'
-              : '#eff0f2',
+            '#fde8ea',
 
           badgeTextColor:
-            pendingCount >
-            0
-              ? '#d9001b'
-              : '#9a9da4',
+            '#d9001b',
+
+          symbol:
+            '◷',
+
+          iconBackground:
+            '#fff3e2',
+
+          iconColor:
+            '#d88916',
         },
       ],
       [
+        totalAssigned,
+        readyCount,
         deliveredCount,
         pendingCount,
-        readyCount,
-        totalAssigned,
+        outForDeliveryCount,
       ],
     );
 
-  /* =====================================================
-   * Recent Orders
-   *
-   * Show only latest two on Home.
-   * View All opens full Orders page.
-   * ===================================================== */
+  /* =======================================================
+   * RECENT ORDERS
+   * ======================================================= */
 
   const recentOrders =
     useMemo(
@@ -1310,9 +1781,9 @@ const HomeScreen = ({
       ],
     );
 
-  /* =====================================================
-   * View All
-   * ===================================================== */
+  /* =======================================================
+   * NAVIGATION
+   * ======================================================= */
 
   const handleViewAll =
     () => {
@@ -1321,14 +1792,11 @@ const HomeScreen = ({
       );
     };
 
-  /* =====================================================
-   * Open Order Details
-   * ===================================================== */
-
   const handleOrderPress =
     order => {
       navigation.navigate(
         'OrderDetail',
+
         {
           orderId:
             order.id,
@@ -1342,238 +1810,279 @@ const HomeScreen = ({
       );
     };
 
-  /* =====================================================
-   * Route
-   * ===================================================== */
-
-  const handleRoutePress =
+  const handleProfilePress =
     () => {
-      /*
-       * Keep your existing Active Route behaviour here.
-       */
+      navigation.navigate(
+        'Profile',
+      );
     };
 
-  /* =====================================================
-   * Recent Order Status UI
-   * ===================================================== */
-
-  const getRecentOrderStyle =
-    status => {
-      const normalized =
-        normalizeStatusValue(
-          status,
-        );
-
-      if (
-        [
-          'delivered',
-          'completed',
-          'complete',
-          'delivery_completed',
-        ].includes(
-          normalized,
-        )
-      ) {
-        return {
-          backgroundColor:
-            '#e3f2e9',
-
-          circleColor:
-            '#00884a',
-
-          symbol:
-            '✓',
-
-          title:
-            'Delivered',
-        };
-      }
-
-      if (
-        isReadyStatus(
-          status,
-        )
-      ) {
-        return {
-          backgroundColor:
-            '#fde8ea',
-
-          circleColor:
-            '#d00018',
-
-          symbol:
-            '✓',
-
-          title:
-            'Ready',
-        };
-      }
-
-      return {
-        backgroundColor:
-          '#fff0dc',
-
-        circleColor:
-          '#d98c19',
-
-        symbol:
-          '◷',
-
-        title:
-          status ||
-          'Pending',
-      };
+  const handleNotificationPress =
+    () => {
+      navigation.navigate(
+        'Notification',
+      );
     };
 
-  /* =====================================================
+  /* =======================================================
+   * DRIVER NAME
+   * ======================================================= */
+
+  const firstName =
+    String(
+      driverName ||
+      'Delivery Partner',
+    )
+      .trim()
+      .split(
+        ' ',
+      )[0];
+
+  /* =======================================================
    * UI
-   * ===================================================== */
+   * ======================================================= */
 
   return (
     <SafeAreaView
       style={
         styles.safeArea
       }
-
       edges={[
         'top',
         'left',
         'right',
-      ]}>
+      ]}
+    >
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#a9090d"
+      />
 
       <View
         style={
           styles.screen
-        }>
-
-        {/* ================================================= */}
+        }
+      >
         {/* HEADER */}
-        {/* ================================================= */}
 
         <View
           style={
             styles.header
-          }>
+          }
+        >
+          <View
+            pointerEvents="none"
+            style={
+              styles.headerCircleOne
+            }
+          />
+
+          <View
+            pointerEvents="none"
+            style={
+              styles.headerCircleTwo
+            }
+          />
 
           <View
             style={
-              styles.profileSection
-            }>
-
-            <Image
-              source={{
-                uri:
-                  'https://images.unsplash.com/photo-1500648767791-00dcc994a43e',
-              }}
-
+              styles.headerTopRow
+            }
+          >
+            <View
               style={
-                styles.avatar
+                styles.headerBrandArea
               }
-            />
+            >
+              <View
+                style={
+                  styles.brandIcon
+                }
+              >
+                <Text
+                  style={
+                    styles.brandIconText
+                  }
+                >
+                  KP
+                </Text>
+              </View>
+
+              <View
+                style={
+                  styles.brandTextArea
+                }
+              >
+                <Text
+                  style={
+                    styles.brandSmallText
+                  }
+                >
+                  KP&apos;S KITCHEN
+                </Text>
+
+                <Text
+                  numberOfLines={
+                    1
+                  }
+                  style={
+                    styles.dashboardTitle
+                  }
+                >
+                  Driver Dashboard
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={
+                styles.headerActions
+              }
+            >
+              <Pressable
+                onPress={
+                  handleNotificationPress
+                }
+                hitSlop={
+                  8
+                }
+                style={({
+                  pressed,
+                }) => [
+                  styles.headerActionButton,
+
+                  pressed &&
+                  styles.headerActionPressed,
+                ]}
+              >
+                <View
+                  style={
+                    styles.newBell
+                  }
+                >
+                  <View
+                    style={
+                      styles.newBellBody
+                    }
+                  />
+
+                  <View
+                    style={
+                      styles.newBellBottom
+                    }
+                  />
+
+                  <View
+                    style={
+                      styles.notificationDot
+                    }
+                  />
+                </View>
+              </Pressable>
+
+              <Pressable
+                onPress={
+                  handleProfilePress
+                }
+                hitSlop={
+                  8
+                }
+                style={({
+                  pressed,
+                }) => [
+                  styles.profileHeaderButton,
+
+                  pressed &&
+                  styles.headerActionPressed,
+                ]}
+              >
+                <Text
+                  style={
+                    styles.profileHeaderInitial
+                  }
+                >
+                  {firstName
+                    ?.charAt(
+                      0,
+                    )
+                    ?.toUpperCase() ||
+                    'D'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View
+            style={
+              styles.headerGreeting
+            }
+          >
+            <Text
+              style={
+                styles.greetingLabel
+              }
+            >
+              GOOD TO SEE YOU
+            </Text>
 
             <Text
               numberOfLines={
                 1
               }
+              style={[
+                styles.greetingName,
 
-              style={
-                styles.appName
-              }>
-              Delivery Pro
+                isSmallScreen &&
+                styles.greetingNameSmall,
+              ]}
+            >
+              Hello, {firstName} 👋
             </Text>
-
-          </View>
-
-          {/* =============================================== */}
-          {/* Notification */}
-          {/* =============================================== */}
-
-          <Pressable
-            onPress={() =>
-              navigation.navigate(
-                'Notification',
-              )
-            }
-
-            style={({
-              pressed,
-            }) => [
-              styles.notificationButton,
-
-              pressed &&
-                styles.pressed,
-            ]}
-
-            accessibilityRole="button"
-
-            accessibilityLabel="Open notifications">
 
             <View
               style={
-                styles.notificationBell
-              }>
-
+                styles.onlineStatus
+              }
+            >
               <View
                 style={
-                  styles.bellTop
+                  styles.onlineDot
                 }
               />
 
-              <View
+              <Text
                 style={
-                  styles.bellBody
+                  styles.onlineText
                 }
-              />
-
-              <View
-                style={
-                  styles.bellBottom
-                }
-              />
-
-              <View
-                style={
-                  styles.bellDot
-                }
-              />
-
+              >
+                Online • Ready for deliveries
+              </Text>
             </View>
-
-            {/* Keep your notification badge implementation here */}
-
-          </Pressable>
-
+          </View>
         </View>
 
-        {/* ================================================= */}
-        {/* SCROLL */}
-        {/* ================================================= */}
+        {/* CONTENT */}
 
         <ScrollView
           showsVerticalScrollIndicator={
             false
           }
-
           refreshControl={
             <RefreshControl
               refreshing={
                 isRefreshing
               }
-
               onRefresh={() =>
                 fetchOrders(
                   true,
                 )
               }
-
               colors={[
                 '#d00018',
               ]}
-
               tintColor="#d00018"
             />
           }
-
           contentContainerStyle={[
             styles.scrollContent,
 
@@ -1581,46 +2090,372 @@ const HomeScreen = ({
               paddingHorizontal:
                 screenPadding,
             },
-          ]}>
-
-          {/* ================================================= */}
-          {/* WELCOME */}
-          {/* ================================================= */}
+          ]}
+        >
+          {/* OVERVIEW */}
 
           <View
             style={
               styles.welcomeSection
-            }>
-
-            <Text
-              style={[
-                styles.heading,
-
-                isSmallScreen &&
-                  styles.headingSmall,
-              ]}>
-              Welcome, Delivery{'\n'}Partner
-            </Text>
-
-            <Text
+            }
+          >
+            <View
               style={
-                styles.subtitle
-              }>
-              Ready for your shift? Here's your daily overview.
-            </Text>
+                styles.welcomeTextArea
+              }
+            >
+              <Text
+                style={
+                  styles.welcomeTitle
+                }
+              >
+                Today&apos;s Overview
+              </Text>
 
+              <Text
+                style={
+                  styles.subtitle
+                }
+              >
+                Check your assigned orders and deliveries for today.
+              </Text>
+            </View>
+
+            <View
+              style={
+                styles.overviewIcon
+              }
+            >
+              <Text
+                style={
+                  styles.overviewIconText
+                }
+              >
+                ☰
+              </Text>
+            </View>
           </View>
 
-          {/* ================================================= */}
-          {/* STATISTICS */}
-          {/* ================================================= */}
+          {/* TODAY'S DELIVERIES */}
 
-          <Text
+          <View
             style={
-              styles.mainSectionTitle
-            }>
-            Today's Statistics
-          </Text>
+              styles.recentActivitySection
+            }
+          >
+            <View
+              style={
+                styles.sectionHeader
+              }
+            >
+              <View
+                style={{
+                  flex: 1,
+                }}
+              >
+                <Text
+                  style={
+                    styles.sectionHeaderTitle
+                  }
+                >
+                  Today&apos;s Deliveries
+                </Text>
+
+                <Text
+                  style={
+                    styles.sectionHeaderSubtitle
+                  }
+                >
+                  Latest assigned customer orders
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={
+                  handleViewAll
+                }
+                style={({
+                  pressed,
+                }) => [
+                  styles.viewAllButton,
+
+                  pressed &&
+                  styles.pressed,
+                ]}
+              >
+                <Text
+                  style={
+                    styles.viewAllText
+                  }
+                >
+                  View All
+                </Text>
+
+                <Text
+                  style={
+                    styles.viewAllArrow
+                  }
+                >
+                  ›
+                </Text>
+              </Pressable>
+            </View>
+
+            {isLoading &&
+            recentOrders.length ===
+              0 ? (
+              <View
+                style={
+                  styles.recentLoadingCard
+                }
+              >
+                <ActivityIndicator
+                  size="small"
+                  color="#d00018"
+                />
+
+                <Text
+                  style={
+                    styles.recentLoadingText
+                  }
+                >
+                  Loading recent orders...
+                </Text>
+              </View>
+            ) : recentOrders.length >
+              0 ? (
+              <View
+                style={
+                  styles.activitiesContainer
+                }
+              >
+                {recentOrders.map(
+                  order => {
+                    /*
+                     * DIRECT FALLBACK AGAIN
+                     * AT RENDER LEVEL.
+                     *
+                     * This makes address display
+                     * even if normalized object
+                     * somehow misses it.
+                     */
+                    const displayAddress =
+                      order?.address ||
+                      order
+                        ?.rawOrder
+                        ?.customer_address ||
+                      order
+                        ?.rawOrder
+                        ?.order
+                        ?.customer_address ||
+                      'Delivery address not available';
+
+                    return (
+                      <Pressable
+                        key={
+                          order.id
+                        }
+                        onPress={() =>
+                          handleOrderPress(
+                            order,
+                          )
+                        }
+                        style={({
+                          pressed,
+                        }) => [
+                          styles.activityCard,
+
+                          pressed &&
+                          styles.activityCardPressed,
+                        ]}
+                      >
+                        {/* AVATAR */}
+
+                        <View
+                          style={
+                            styles.customerAvatar
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.customerAvatarText
+                            }
+                          >
+                            {order
+                              .customerName
+                              ?.charAt(
+                                0,
+                              )
+                              ?.toUpperCase() ||
+                              'C'}
+                          </Text>
+                        </View>
+
+                        {/* INFO */}
+
+                        <View
+                          style={
+                            styles.activityInformation
+                          }
+                        >
+                          <Text
+                            numberOfLines={
+                              1
+                            }
+                            style={
+                              styles.orderNumberLabel
+                            }
+                          >
+                            ORDER {order.orderNumber}
+                          </Text>
+
+                          <Text
+                            numberOfLines={
+                              1
+                            }
+                            style={[
+                              styles.activityTitle,
+
+                              isSmallScreen &&
+                              styles.activityTitleSmall,
+                            ]}
+                          >
+                            {order.customerName}
+                          </Text>
+
+                          {/* ADDRESS */}
+
+                          <View
+                            style={
+                              styles.customerAddressRow
+                            }
+                          >
+                            <View
+                              style={
+                                styles.customerAddressIconBox
+                              }
+                            >
+                              <View
+                                style={
+                                  styles.customerAddressDot
+                                }
+                              />
+                            </View>
+
+                            <Text
+                              numberOfLines={
+                                3
+                              }
+                              ellipsizeMode="tail"
+                              style={[
+                                styles.customerAddressText,
+
+                                displayAddress ===
+                                  'Delivery address not available' &&
+                                styles.addressUnavailable,
+                              ]}
+                            >
+                              {displayAddress}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* ARROW */}
+
+                        <View
+                          style={
+                            styles.activityRight
+                          }
+                        >
+                          <View
+                            style={
+                              styles.activityArrowCircle
+                            }
+                          >
+                            <Text
+                              style={
+                                styles.activityArrow
+                              }
+                            >
+                              ›
+                            </Text>
+                          </View>
+                        </View>
+                      </Pressable>
+                    );
+                  },
+                )}
+              </View>
+            ) : (
+              <View
+                style={
+                  styles.noRecentOrderCard
+                }
+              >
+                <View
+                  style={
+                    styles.noRecentOrderIcon
+                  }
+                >
+                  <Text
+                    style={
+                      styles.noRecentOrderIconText
+                    }
+                  >
+                    □
+                  </Text>
+                </View>
+
+                <Text
+                  style={
+                    styles.noRecentOrderTitle
+                  }
+                >
+                  No Recent Orders
+                </Text>
+
+                <Text
+                  style={
+                    styles.noRecentOrderText
+                  }
+                >
+                  Your assigned orders will appear here.
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* STATISTICS */}
+
+          <View
+            style={
+              styles.sectionTitleRow
+            }
+          >
+            <Text
+              style={
+                styles.mainSectionTitle
+              }
+            >
+              Today&apos;s Statistics
+            </Text>
+
+            {!isLoading && (
+              <View
+                style={
+                  styles.totalOrdersPill
+                }
+              >
+                <Text
+                  style={
+                    styles.totalOrdersPillText
+                  }
+                >
+                  {totalAssigned} Total
+                </Text>
+              </View>
+            )}
+          </View>
 
           {isLoading &&
           orders.length ===
@@ -1628,21 +2463,20 @@ const HomeScreen = ({
             <View
               style={
                 styles.statisticsLoading
-              }>
-
+              }
+            >
               <ActivityIndicator
                 size="small"
-
                 color="#d00018"
               />
 
               <Text
                 style={
                   styles.statisticsLoadingText
-                }>
+                }
+              >
                 Loading order statistics...
               </Text>
-
             </View>
           ) : (
             <View
@@ -1656,15 +2490,14 @@ const HomeScreen = ({
                   rowGap:
                     cardGap,
                 },
-              ]}>
-
+              ]}
+            >
               {statistics.map(
                 item => (
                   <View
                     key={
                       item.id
                     }
-
                     style={[
                       styles.statisticCard,
 
@@ -1674,44 +2507,67 @@ const HomeScreen = ({
                       },
 
                       isSmallScreen &&
-                        styles.statisticCardSmall,
-                    ]}>
+                      styles.statisticCardSmall,
+                    ]}
+                  >
+                    <View
+                      style={
+                        styles.statCardTop
+                      }
+                    >
+                      <View
+                        style={[
+                          styles.statIcon,
+
+                          {
+                            backgroundColor:
+                              item.iconBackground,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statIconText,
+
+                            {
+                              color:
+                                item.iconColor,
+                            },
+                          ]}
+                        >
+                          {item.symbol}
+                        </Text>
+                      </View>
+
+                      <Text
+                        style={[
+                          styles.statisticValue,
+
+                          {
+                            color:
+                              item.valueColor,
+                          },
+
+                          isSmallScreen &&
+                          styles.statisticValueSmall,
+                        ]}
+                      >
+                        {item.value}
+                      </Text>
+                    </View>
 
                     <Text
                       numberOfLines={
                         2
                       }
-
                       style={[
                         styles.statisticCardTitle,
 
                         isSmallScreen &&
-                          styles.statisticCardTitleSmall,
-                      ]}>
-
-                      {
-                        item.title
-                      }
-
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.statisticValue,
-
-                        {
-                          color:
-                            item.valueColor,
-                        },
-
-                        isSmallScreen &&
-                          styles.statisticValueSmall,
-                      ]}>
-
-                      {
-                        item.value
-                      }
-
+                        styles.statisticCardTitleSmall,
+                      ]}
+                    >
+                      {item.title}
                     </Text>
 
                     <View
@@ -1722,13 +2578,12 @@ const HomeScreen = ({
                           backgroundColor:
                             item.badgeBackground,
                         },
-                      ]}>
-
+                      ]}
+                    >
                       <Text
                         numberOfLines={
                           1
                         }
-
                         style={[
                           styles.statisticBadgeText,
 
@@ -1736,503 +2591,81 @@ const HomeScreen = ({
                             color:
                               item.badgeTextColor,
                           },
-
-                          isSmallScreen &&
-                            styles.statisticBadgeTextSmall,
-                        ]}>
-
-                        {
-                          item.badgeText
-                        }
-
+                        ]}
+                      >
+                        {item.badgeText}
                       </Text>
-
                     </View>
-
                   </View>
                 ),
               )}
-
             </View>
           )}
 
-          {/* ================================================= */}
-          {/* ORDER API ERROR */}
-          {/* ================================================= */}
+          {/* ERROR */}
 
           {!!ordersError && (
             <View
               style={
                 styles.orderErrorCard
-              }>
-
+              }
+            >
               <View
                 style={
                   styles.orderErrorIcon
-                }>
-
+                }
+              >
                 <Text
                   style={
                     styles.orderErrorIconText
-                  }>
+                  }
+                >
                   !
                 </Text>
-
               </View>
 
               <View
                 style={
                   styles.orderErrorContent
-                }>
-
+                }
+              >
                 <Text
                   style={
                     styles.orderErrorTitle
-                  }>
+                  }
+                >
                   Unable to Load Orders
                 </Text>
 
                 <Text
                   style={
                     styles.orderErrorText
-                  }>
-                  {
-                    ordersError
                   }
+                >
+                  {ordersError}
                 </Text>
 
                 <Pressable
                   onPress={() =>
                     fetchOrders()
                   }
-
                   style={
                     styles.retryButton
-                  }>
-
+                  }
+                >
                   <Text
                     style={
                       styles.retryButtonText
-                    }>
+                    }
+                  >
                     Try Again
                   </Text>
-
                 </Pressable>
-
               </View>
-
             </View>
           )}
-
-          {/* ================================================= */}
-          {/* RECENT ORDERS */}
-          {/* ================================================= */}
-
-          <View
-            style={
-              styles.recentActivitySection
-            }>
-
-            <View
-              style={
-                styles.sectionHeader
-              }>
-
-              <Text
-                style={
-                  styles.sectionHeaderTitle
-                }>
-                Recent Orders
-              </Text>
-
-              {/* =========================================== */}
-              {/* VIEW ALL → ORDERS PAGE */}
-              {/* =========================================== */}
-
-              <Pressable
-                onPress={
-                  handleViewAll
-                }
-
-                style={({
-                  pressed,
-                }) => [
-                  styles.viewAllButton,
-
-                  pressed &&
-                    styles.pressed,
-                ]}>
-
-                <Text
-                  style={
-                    styles.viewAllText
-                  }>
-                  View All
-                </Text>
-
-              </Pressable>
-
-            </View>
-
-            {/* ============================================= */}
-            {/* Loading */}
-            {/* ============================================= */}
-
-            {isLoading &&
-            recentOrders.length ===
-              0 ? (
-              <View
-                style={
-                  styles.recentLoadingCard
-                }>
-
-                <ActivityIndicator
-                  size="small"
-
-                  color="#d00018"
-                />
-
-                <Text
-                  style={
-                    styles.recentLoadingText
-                  }>
-                  Loading recent orders...
-                </Text>
-
-              </View>
-            ) : recentOrders.length >
-              0 ? (
-              <View
-                style={
-                  styles.activitiesContainer
-                }>
-
-                {recentOrders.map(
-                  order => {
-                    const statusUI =
-                      getRecentOrderStyle(
-                        order.status,
-                      );
-
-                    return (
-                      <Pressable
-                        key={
-                          order.id
-                        }
-
-                        onPress={() =>
-                          handleOrderPress(
-                            order,
-                          )
-                        }
-
-                        style={({
-                          pressed,
-                        }) => [
-                          styles.activityCard,
-
-                          pressed &&
-                            styles.pressed,
-                        ]}>
-
-                        {/* ================================= */}
-                        {/* Status Icon */}
-                        {/* ================================= */}
-
-                        <View
-                          style={[
-                            styles.successIconContainer,
-
-                            {
-                              backgroundColor:
-                                statusUI.backgroundColor,
-                            },
-                          ]}>
-
-                          <View
-                            style={[
-                              styles.successIconCircle,
-
-                              {
-                                backgroundColor:
-                                  statusUI.circleColor,
-                              },
-                            ]}>
-
-                            <Text
-                              style={
-                                styles.successCheck
-                              }>
-
-                              {
-                                statusUI.symbol
-                              }
-
-                            </Text>
-
-                          </View>
-
-                        </View>
-
-                        {/* ================================= */}
-                        {/* Information */}
-                        {/* ================================= */}
-
-                        <View
-                          style={
-                            styles.activityInformation
-                          }>
-
-                          <Text
-                            numberOfLines={
-                              1
-                            }
-
-                            style={[
-                              styles.activityTitle,
-
-                              isSmallScreen &&
-                                styles.activityTitleSmall,
-                            ]}>
-
-                            Order{' '}
-                            {
-                              order.orderNumber
-                            }{' '}
-                            {
-                              statusUI.title
-                            }
-
-                          </Text>
-
-                          <Text
-                            numberOfLines={
-                              1
-                            }
-
-                            style={[
-                              styles.activityAddress,
-
-                              isSmallScreen &&
-                                styles.activityAddressSmall,
-                            ]}>
-
-                            {
-                              order.address
-                            }
-
-                          </Text>
-
-                          <Text
-                            style={
-                              styles.activityTime
-                            }>
-
-                            {
-                              order.time
-                            }
-
-                          </Text>
-
-                        </View>
-
-                        {/* ================================= */}
-                        {/* Amount */}
-                        {/* ================================= */}
-
-                        <Text
-                          numberOfLines={
-                            1
-                          }
-
-                          style={[
-                            styles.activityAmount,
-
-                            isSmallScreen &&
-                              styles.activityAmountSmall,
-                          ]}>
-
-                          {
-                            order.amount
-                          }
-
-                        </Text>
-
-                      </Pressable>
-                    );
-                  },
-                )}
-
-              </View>
-            ) : (
-              <View
-                style={
-                  styles.noRecentOrderCard
-                }>
-
-                <View
-                  style={
-                    styles.noRecentOrderIcon
-                  }>
-
-                  <Text
-                    style={
-                      styles.noRecentOrderIconText
-                    }>
-                    □
-                  </Text>
-
-                </View>
-
-                <Text
-                  style={
-                    styles.noRecentOrderTitle
-                  }>
-                  No Recent Orders
-                </Text>
-
-                <Text
-                  style={
-                    styles.noRecentOrderText
-                  }>
-                  Your assigned orders will appear here.
-                </Text>
-
-              </View>
-            )}
-
-          </View>
-
-          {/* ================================================= */}
-          {/* ACTIVE ROUTE */}
-          {/* ================================================= */}
-
-          <View
-            style={
-              styles.routeSection
-            }>
-
-            <Pressable
-              onPress={
-                handleRoutePress
-              }
-
-              style={({
-                pressed,
-              }) => [
-                styles.routeCard,
-
-                pressed &&
-                  styles.routeCardPressed,
-              ]}>
-
-              <ImageBackground
-                source={{
-                  uri:
-                    'https://images.unsplash.com/photo-1524661135-423995f22d0b',
-                }}
-
-                resizeMode="cover"
-
-                style={
-                  styles.routeBackground
-                }
-
-                imageStyle={
-                  styles.routeBackgroundImage
-                }>
-
-                <View
-                  style={
-                    styles.routeOverlay
-                  }
-                />
-
-                <View
-                  style={
-                    styles.mapPin
-                  }>
-
-                  <View
-                    style={
-                      styles.mapPinCircle
-                    }>
-
-                    <View
-                      style={
-                        styles.mapPinInnerDot
-                      }
-                    />
-
-                  </View>
-
-                  <View
-                    style={
-                      styles.mapPinTriangle
-                    }
-                  />
-
-                </View>
-
-                <View
-                  style={
-                    styles.routeContent
-                  }>
-
-                  <View
-                    style={
-                      styles.routeInformation
-                    }>
-
-                    <Text
-                      style={
-                        styles.activeRouteLabel
-                      }>
-                      ACTIVE ROUTE
-                    </Text>
-
-                    <Text
-                      numberOfLines={
-                        1
-                      }
-
-                      style={[
-                        styles.routeTitle,
-
-                        isSmallScreen &&
-                          styles.routeTitleSmall,
-                      ]}>
-                      Heading to Central Hub
-                    </Text>
-
-                  </View>
-
-                  <View
-                    style={
-                      styles.navigationButton
-                    }>
-
-                    <Text
-                      style={
-                        styles.navigationArrow
-                      }>
-                      ➤
-                    </Text>
-
-                  </View>
-
-                </View>
-
-              </ImageBackground>
-
-            </Pressable>
-
-          </View>
-
         </ScrollView>
-
       </View>
-
     </SafeAreaView>
   );
 };
@@ -2240,591 +2673,1143 @@ const HomeScreen = ({
 export default HomeScreen;
 
 /* =========================================================
- * Styles
+ * STYLES
  * ========================================================= */
 
 const styles =
   StyleSheet.create({
     safeArea: {
-      flex:
-        1,
+      flex: 1,
 
       backgroundColor:
-        '#ffffff',
+        '#a9090d',
     },
 
     screen: {
-      flex:
-        1,
+      flex: 1,
 
       backgroundColor:
-        '#f8f9fb',
+        '#f6f7f9',
+    },
+
+    pressed: {
+      opacity: 0.68,
     },
 
     /* =====================================================
-     * Header
+     * HEADER
      * ===================================================== */
 
     header: {
-      minHeight:
-        58,
+      minHeight: 215,
 
-      paddingHorizontal:
-        16,
+      backgroundColor:
+        '#a9090d',
+
+      paddingHorizontal: 18,
+
+      paddingTop: 14,
+
+      paddingBottom: 27,
+
+      borderBottomLeftRadius: 28,
+
+      borderBottomRightRadius: 28,
+
+      overflow: 'hidden',
+
+      elevation: 8,
+
+      shadowColor:
+        '#700000',
+
+      shadowOffset: {
+        width: 0,
+        height: 5,
+      },
+
+      shadowOpacity: 0.25,
+
+      shadowRadius: 10,
+    },
+
+    headerCircleOne: {
+      position: 'absolute',
+
+      width: 190,
+
+      height: 190,
+
+      borderRadius: 95,
+
+      borderWidth: 1,
+
+      borderColor:
+        'rgba(255,255,255,0.09)',
+
+      top: -80,
+
+      right: -60,
+    },
+
+    headerCircleTwo: {
+      position: 'absolute',
+
+      width: 130,
+
+      height: 130,
+
+      borderRadius: 65,
+
+      backgroundColor:
+        'rgba(255,255,255,0.035)',
+
+      bottom: -60,
+
+      left: -25,
+    },
+
+    headerTopRow: {
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      justifyContent:
+        'space-between',
+    },
+
+    headerBrandArea: {
+      flex: 1,
+
+      minWidth: 0,
+
+      flexDirection: 'row',
+
+      alignItems: 'center',
+    },
+
+    brandIcon: {
+      width: 43,
+
+      height: 43,
+
+      borderRadius: 13,
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
 
       backgroundColor:
         '#ffffff',
 
-      borderBottomWidth:
-        1,
+      marginRight: 11,
 
-      borderBottomColor:
-        '#e8e8eb',
+      elevation: 3,
+    },
 
-      flexDirection:
-        'row',
+    brandIconText: {
+      color:
+        '#a9090d',
 
-      alignItems:
-        'center',
+      fontSize: 16,
+
+      fontWeight: '900',
+
+      letterSpacing: -0.4,
+    },
+
+    brandTextArea: {
+      flex: 1,
+
+      minWidth: 0,
+    },
+
+    brandSmallText: {
+      color:
+        '#f4c454',
+
+      fontSize: 9.5,
+
+      lineHeight: 12,
+
+      letterSpacing: 1.2,
+
+      fontWeight: '900',
+    },
+
+    dashboardTitle: {
+      color:
+        '#ffffff',
+
+      fontSize: 18,
+
+      lineHeight: 23,
+
+      fontWeight: '800',
+
+      marginTop: 1,
+    },
+
+    headerActions: {
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      columnGap: 8,
+
+      marginLeft: 9,
+    },
+
+    headerActionButton: {
+      width: 42,
+
+      height: 42,
+
+      borderRadius: 13,
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+
+      backgroundColor:
+        'rgba(255,255,255,0.13)',
+
+      borderWidth: 1,
+
+      borderColor:
+        'rgba(255,255,255,0.10)',
+    },
+
+    profileHeaderButton: {
+      width: 42,
+
+      height: 42,
+
+      borderRadius: 21,
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+
+      backgroundColor:
+        '#ffffff',
+
+      borderWidth: 2,
+
+      borderColor:
+        'rgba(255,255,255,0.35)',
+    },
+
+    profileHeaderInitial: {
+      color:
+        '#a9090d',
+
+      fontSize: 17,
+
+      fontWeight: '900',
+    },
+
+    headerActionPressed: {
+      opacity: 0.75,
+
+      transform: [
+        {
+          scale: 0.96,
+        },
+      ],
+    },
+
+    /* =====================================================
+     * BELL
+     * ===================================================== */
+
+    newBell: {
+      position: 'relative',
+
+      width: 22,
+
+      height: 24,
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+    },
+
+    newBellBody: {
+      width: 14,
+
+      height: 15,
+
+      borderWidth: 2,
+
+      borderColor:
+        '#ffffff',
+
+      borderTopLeftRadius: 8,
+
+      borderTopRightRadius: 8,
+
+      borderBottomLeftRadius: 4,
+
+      borderBottomRightRadius: 4,
+    },
+
+    newBellBottom: {
+      position: 'absolute',
+
+      bottom: 2,
+
+      width: 5,
+
+      height: 2,
+
+      borderRadius: 2,
+
+      backgroundColor:
+        '#ffffff',
+    },
+
+    notificationDot: {
+      position: 'absolute',
+
+      top: 0,
+
+      right: 0,
+
+      width: 7,
+
+      height: 7,
+
+      borderRadius: 4,
+
+      backgroundColor:
+        '#f4c454',
+
+      borderWidth: 1.5,
+
+      borderColor:
+        '#a9090d',
+    },
+
+    /* =====================================================
+     * GREETING
+     * ===================================================== */
+
+    headerGreeting: {
+      marginTop: 28,
+    },
+
+    greetingLabel: {
+      color:
+        'rgba(255,255,255,0.62)',
+
+      fontSize: 9.5,
+
+      fontWeight: '800',
+
+      letterSpacing: 1.1,
+    },
+
+    greetingName: {
+      color:
+        '#ffffff',
+
+      fontSize: 30,
+
+      lineHeight: 36,
+
+      fontWeight: '900',
+
+      letterSpacing: -0.6,
+
+      marginTop: 3,
+    },
+
+    greetingNameSmall: {
+      fontSize: 26,
+
+      lineHeight: 32,
+    },
+
+    onlineStatus: {
+      alignSelf:
+        'flex-start',
+
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      backgroundColor:
+        'rgba(0,0,0,0.12)',
+
+      paddingHorizontal: 10,
+
+      paddingVertical: 6,
+
+      borderRadius: 20,
+
+      marginTop: 9,
+    },
+
+    onlineDot: {
+      width: 7,
+
+      height: 7,
+
+      borderRadius: 4,
+
+      backgroundColor:
+        '#69e68d',
+
+      marginRight: 6,
+    },
+
+    onlineText: {
+      color:
+        'rgba(255,255,255,0.90)',
+
+      fontSize: 10.5,
+
+      fontWeight: '600',
+    },
+
+    /* =====================================================
+     * CONTENT
+     * ===================================================== */
+
+    scrollContent: {
+      flexGrow: 1,
+
+      paddingTop: 18,
+
+      paddingBottom: 100,
+    },
+
+    welcomeSection: {
+      minHeight: 82,
+
+      flexDirection: 'row',
+
+      alignItems: 'center',
 
       justifyContent:
         'space-between',
 
-      elevation:
-        2,
-
-      shadowColor:
-        '#000000',
-
-      shadowOffset: {
-        width:
-          0,
-
-        height:
-          1,
-      },
-
-      shadowOpacity:
-        0.06,
-
-      shadowRadius:
-        3,
-    },
-
-    profileSection: {
-      flex:
-        1,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-    },
-
-    avatar: {
-      width:
-        32,
-
-      height:
-        32,
-
-      borderRadius:
-        16,
-
       backgroundColor:
-        '#dddddd',
-    },
+        '#ffffff',
 
-    appName: {
-      flexShrink:
-        1,
+      borderRadius: 15,
 
-      marginLeft:
-        10,
-
-      color:
-        '#d10018',
-
-      fontSize:
-        18,
-
-      fontWeight:
-        '700',
-    },
-
-    /* =====================================================
-     * Notification
-     * ===================================================== */
-
-    notificationButton: {
-      position:
-        'relative',
-
-      width:
-        42,
-
-      height:
-        42,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-    },
-
-    notificationBell: {
-      width:
-        22,
-
-      height:
-        25,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-    },
-
-    bellTop: {
-      width:
-        5,
-
-      height:
-        4,
-
-      backgroundColor:
-        '#d10018',
-
-      borderTopLeftRadius:
-        3,
-
-      borderTopRightRadius:
-        3,
-    },
-
-    bellBody: {
-      width:
-        14,
-
-      height:
-        13,
-
-      borderWidth:
-        2,
+      borderWidth: 1,
 
       borderColor:
-        '#d10018',
+        '#eceef1',
 
-      borderTopLeftRadius:
-        8,
+      paddingHorizontal: 15,
 
-      borderTopRightRadius:
-        8,
+      paddingVertical: 13,
 
-      borderBottomWidth:
-        0,
+      marginBottom: 23,
+
+      elevation: 2,
     },
 
-    bellBottom: {
-      width:
-        18,
+    welcomeTextArea: {
+      flex: 1,
 
-      height:
-        2,
+      minWidth: 0,
 
-      backgroundColor:
-        '#d10018',
-
-      borderRadius:
-        2,
+      paddingRight: 10,
     },
 
-    bellDot: {
-      width:
-        4,
-
-      height:
-        4,
-
-      marginTop:
-        1,
-
-      backgroundColor:
-        '#d10018',
-
-      borderRadius:
-        2,
-    },
-
-    pressed: {
-      opacity:
-        0.65,
-    },
-
-    /* =====================================================
-     * Scroll
-     * ===================================================== */
-
-    scrollContent: {
-      flexGrow:
-        1,
-
-      paddingTop:
-        18,
-
-      paddingBottom:
-        100,
-    },
-
-    /* =====================================================
-     * Welcome
-     * ===================================================== */
-
-    welcomeSection: {
-      marginBottom:
-        22,
-    },
-
-    heading: {
+    welcomeTitle: {
       color:
-        '#090909',
+        '#17191d',
 
-      fontSize:
-        29,
+      fontSize: 18,
 
-      lineHeight:
-        35,
+      lineHeight: 23,
 
-      fontWeight:
-        '800',
-
-      letterSpacing:
-        -0.6,
-    },
-
-    headingSmall: {
-      fontSize:
-        25,
-
-      lineHeight:
-        31,
+      fontWeight: '900',
     },
 
     subtitle: {
-      maxWidth:
-        340,
-
-      marginTop:
-        7,
-
       color:
-        '#5c6477',
+        '#707887',
 
-      fontSize:
-        15,
+      fontSize: 12,
 
-      lineHeight:
-        21,
+      lineHeight: 17,
 
-      fontWeight:
-        '400',
+      marginTop: 3,
     },
 
-    mainSectionTitle: {
-      marginBottom:
-        12,
+    overviewIcon: {
+      width: 40,
 
+      height: 40,
+
+      borderRadius: 12,
+
+      backgroundColor:
+        '#fff0f1',
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+    },
+
+    overviewIconText: {
       color:
-        '#111111',
+        '#d00018',
 
-      fontSize:
-        16,
+      fontSize: 20,
 
-      lineHeight:
-        21,
-
-      fontWeight:
-        '700',
+      fontWeight: '700',
     },
 
     /* =====================================================
-     * Statistics
+     * RECENT
      * ===================================================== */
 
-    statisticsContainer: {
-      width:
-        '100%',
-
-      flexDirection:
-        'row',
-
-      flexWrap:
-        'wrap',
-
-      alignItems:
-        'stretch',
+    recentActivitySection: {
+      marginBottom: 24,
     },
 
-    statisticCard: {
-      minHeight:
-        128,
+    sectionHeader: {
+      marginBottom: 12,
 
-      paddingHorizontal:
-        14,
+      flexDirection: 'row',
 
-      paddingVertical:
-        15,
+      alignItems: 'center',
+
+      justifyContent:
+        'space-between',
+    },
+
+    sectionHeaderTitle: {
+      color:
+        '#15171b',
+
+      fontSize: 18,
+
+      lineHeight: 23,
+
+      fontWeight: '900',
+    },
+
+    sectionHeaderSubtitle: {
+      color:
+        '#8a909b',
+
+      fontSize: 10.5,
+
+      marginTop: 2,
+    },
+
+    viewAllButton: {
+      minHeight: 36,
+
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+
+      backgroundColor:
+        '#fff0f1',
+
+      paddingHorizontal: 11,
+
+      borderRadius: 18,
+    },
+
+    viewAllText: {
+      color:
+        '#d00018',
+
+      fontSize: 11,
+
+      fontWeight: '800',
+    },
+
+    viewAllArrow: {
+      color:
+        '#d00018',
+
+      fontSize: 20,
+
+      marginLeft: 3,
+    },
+
+    activitiesContainer: {
+      rowGap: 10,
+    },
+
+    /* =====================================================
+     * ORDER CARD
+     * ===================================================== */
+
+    activityCard: {
+      minHeight: 126,
+
+      paddingHorizontal: 13,
+
+      paddingVertical: 13,
 
       backgroundColor:
         '#ffffff',
 
-      borderRadius:
-        11,
+      borderRadius: 15,
 
-      elevation:
-        3,
+      borderWidth: 1,
 
-      shadowColor:
-        '#000000',
+      borderColor:
+        '#eceef1',
 
-      shadowOffset: {
-        width:
-          0,
+      flexDirection: 'row',
 
-        height:
-          2,
-      },
+      alignItems: 'center',
 
-      shadowOpacity:
-        0.07,
+      elevation: 2,
+    },
 
-      shadowRadius:
-        6,
+    activityCardPressed: {
+      opacity: 0.8,
+
+      transform: [
+        {
+          scale: 0.995,
+        },
+      ],
+    },
+
+    customerAvatar: {
+      width: 50,
+
+      height: 50,
+
+      marginRight: 12,
+
+      borderRadius: 15,
+
+      backgroundColor:
+        '#fff0f1',
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+    },
+
+    customerAvatarText: {
+      color:
+        '#a9090d',
+
+      fontSize: 20,
+
+      fontWeight: '900',
+    },
+
+    activityInformation: {
+      flex: 1,
+
+      minWidth: 0,
+
+      paddingRight: 8,
+    },
+
+    orderNumberLabel: {
+      color:
+        '#a9090d',
+
+      fontSize: 11.5,
+
+      lineHeight: 15,
+
+      fontWeight: '900',
+
+      letterSpacing: 0.35,
+    },
+
+    activityTitle: {
+      color:
+        '#15171b',
+
+      fontSize: 16,
+
+      lineHeight: 20,
+
+      fontWeight: '900',
+
+      marginTop: 4,
+    },
+
+    activityTitleSmall: {
+      fontSize: 14.5,
+    },
+
+    /* =====================================================
+     * ADDRESS
+     * ===================================================== */
+
+    customerAddressRow: {
+      flexDirection: 'row',
+
+      alignItems:
+        'flex-start',
+
+      marginTop: 7,
+
+      paddingRight: 2,
+    },
+
+    customerAddressIconBox: {
+      width: 20,
+
+      height: 20,
+
+      borderRadius: 6,
+
+      backgroundColor:
+        '#fff0f1',
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+
+      marginRight: 7,
+
+      marginTop: 1,
+    },
+
+    customerAddressDot: {
+      width: 7,
+
+      height: 7,
+
+      borderRadius: 4,
+
+      backgroundColor:
+        '#a9090d',
+    },
+
+    customerAddressText: {
+      flex: 1,
+
+      color:
+        '#687182',
+
+      fontSize: 11,
+
+      lineHeight: 16,
+
+      fontWeight: '600',
+
+      flexShrink: 1,
+    },
+
+    addressUnavailable: {
+      color:
+        '#a8adb5',
+
+      fontStyle: 'italic',
+    },
+
+    activityRight: {
+      alignItems: 'center',
+
+      justifyContent: 'center',
+    },
+
+    activityArrowCircle: {
+      width: 34,
+
+      height: 34,
+
+      borderRadius: 11,
+
+      backgroundColor:
+        '#f6f7f9',
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+    },
+
+    activityArrow: {
+      color:
+        '#a9090d',
+
+      fontSize: 25,
+
+      lineHeight: 26,
+
+      fontWeight: '500',
+    },
+
+    /* =====================================================
+     * LOADING / EMPTY
+     * ===================================================== */
+
+    recentLoadingCard: {
+      minHeight: 90,
+
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+
+      backgroundColor:
+        '#ffffff',
+
+      borderRadius: 14,
+
+      borderWidth: 1,
+
+      borderColor:
+        '#eceef1',
+    },
+
+    recentLoadingText: {
+      color:
+        '#68718d',
+
+      fontSize: 12,
+
+      marginLeft: 8,
+    },
+
+    noRecentOrderCard: {
+      minHeight: 150,
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+
+      backgroundColor:
+        '#ffffff',
+
+      borderRadius: 14,
+
+      borderWidth: 1,
+
+      borderColor:
+        '#eceef1',
+
+      padding: 18,
+    },
+
+    noRecentOrderIcon: {
+      width: 44,
+
+      height: 44,
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+
+      backgroundColor:
+        '#fde8ea',
+
+      borderRadius: 22,
+    },
+
+    noRecentOrderIconText: {
+      color:
+        '#d00018',
+
+      fontSize: 20,
+    },
+
+    noRecentOrderTitle: {
+      color:
+        '#111111',
+
+      fontSize: 14,
+
+      fontWeight: '800',
+
+      marginTop: 8,
+    },
+
+    noRecentOrderText: {
+      color:
+        '#6e7584',
+
+      fontSize: 11,
+
+      marginTop: 4,
+
+      textAlign: 'center',
+    },
+
+    /* =====================================================
+     * STATS
+     * ===================================================== */
+
+    sectionTitleRow: {
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      justifyContent:
+        'space-between',
+
+      marginBottom: 12,
+    },
+
+    mainSectionTitle: {
+      color:
+        '#15171b',
+
+      fontSize: 18,
+
+      lineHeight: 23,
+
+      fontWeight: '900',
+    },
+
+    totalOrdersPill: {
+      backgroundColor:
+        '#fff0f1',
+
+      paddingHorizontal: 9,
+
+      paddingVertical: 5,
+
+      borderRadius: 15,
+    },
+
+    totalOrdersPillText: {
+      color:
+        '#d00018',
+
+      fontSize: 10,
+
+      fontWeight: '800',
+    },
+
+    statisticsContainer: {
+      width: '100%',
+
+      flexDirection: 'row',
+
+      flexWrap: 'wrap',
+
+      alignItems: 'stretch',
+    },
+
+    statisticCard: {
+      minHeight: 140,
+
+      paddingHorizontal: 13,
+
+      paddingVertical: 13,
+
+      backgroundColor:
+        '#ffffff',
+
+      borderRadius: 14,
+
+      borderWidth: 1,
+
+      borderColor:
+        '#eceef1',
+
+      elevation: 2,
     },
 
     statisticCardSmall: {
-      minHeight:
-        122,
+      minHeight: 136,
 
-      paddingHorizontal:
-        10,
+      paddingHorizontal: 10,
+    },
 
-      paddingVertical:
-        13,
+    statCardTop: {
+      flexDirection: 'row',
+
+      alignItems: 'center',
+
+      justifyContent:
+        'space-between',
+    },
+
+    statIcon: {
+      width: 35,
+
+      height: 35,
+
+      borderRadius: 10,
+
+      alignItems: 'center',
+
+      justifyContent: 'center',
+    },
+
+    statIconText: {
+      fontSize: 18,
+
+      fontWeight: '900',
+    },
+
+    statisticValue: {
+      fontSize: 29,
+
+      lineHeight: 34,
+
+      fontWeight: '900',
+    },
+
+    statisticValueSmall: {
+      fontSize: 26,
     },
 
     statisticCardTitle: {
-      minHeight:
-        32,
+      minHeight: 34,
 
       color:
         '#3e4858',
 
-      fontSize:
-        12,
+      fontSize: 13,
 
-      lineHeight:
-        16,
+      lineHeight: 17,
 
-      fontWeight:
-        '500',
+      fontWeight: '700',
+
+      marginTop: 8,
     },
 
     statisticCardTitleSmall: {
-      fontSize:
-        10,
+      fontSize: 11.5,
 
-      lineHeight:
-        14,
-    },
-
-    statisticValue: {
-      marginTop:
-        3,
-
-      fontSize:
-        29,
-
-      lineHeight:
-        34,
-
-      fontWeight:
-        '700',
-    },
-
-    statisticValueSmall: {
-      fontSize:
-        26,
-
-      lineHeight:
-        31,
+      lineHeight: 15,
     },
 
     statisticBadge: {
       alignSelf:
         'flex-start',
 
-      maxWidth:
-        '100%',
+      maxWidth: '100%',
 
-      marginTop:
-        8,
+      marginTop: 'auto',
 
-      paddingHorizontal:
-        8,
+      paddingHorizontal: 8,
 
-      paddingVertical:
-        4,
+      paddingVertical: 4,
 
-      borderRadius:
-        20,
+      borderRadius: 20,
     },
 
     statisticBadgeText: {
-      fontSize:
-        10,
+      fontSize: 10.5,
 
-      lineHeight:
-        12,
+      lineHeight: 13,
 
-      fontWeight:
-        '500',
-    },
-
-    statisticBadgeTextSmall: {
-      fontSize:
-        9,
-
-      lineHeight:
-        11,
+      fontWeight: '700',
     },
 
     statisticsLoading: {
-      minHeight:
-        100,
+      minHeight: 100,
 
-      flexDirection:
-        'row',
+      flexDirection: 'row',
 
-      alignItems:
-        'center',
+      alignItems: 'center',
 
-      justifyContent:
-        'center',
+      justifyContent: 'center',
 
       backgroundColor:
         '#ffffff',
 
-      borderRadius:
-        12,
+      borderRadius: 14,
 
-      marginBottom:
-        10,
+      borderWidth: 1,
+
+      borderColor:
+        '#eceef1',
     },
 
     statisticsLoadingText: {
       color:
         '#68718d',
 
-      fontSize:
-        11,
+      fontSize: 12,
 
-      marginLeft:
-        8,
+      marginLeft: 8,
     },
 
     /* =====================================================
-     * Error
+     * ERROR
      * ===================================================== */
 
     orderErrorCard: {
-      flexDirection:
-        'row',
+      flexDirection: 'row',
 
       backgroundColor:
         '#fff1f2',
 
-      borderWidth:
-        1,
+      borderWidth: 1,
 
       borderColor:
         '#f1d3d6',
 
-      borderRadius:
-        11,
+      borderRadius: 12,
 
-      padding:
-        12,
+      padding: 12,
 
-      marginTop:
-        15,
+      marginTop: 15,
+
+      marginBottom: 20,
     },
 
     orderErrorIcon: {
-      width:
-        31,
+      width: 34,
 
-      height:
-        31,
+      height: 34,
 
-      alignItems:
-        'center',
+      alignItems: 'center',
 
-      justifyContent:
-        'center',
+      justifyContent: 'center',
 
       backgroundColor:
         '#d00018',
 
-      borderRadius:
-        16,
+      borderRadius: 17,
 
-      marginRight:
-        10,
+      marginRight: 10,
     },
 
     orderErrorIconText: {
       color:
         '#ffffff',
 
-      fontSize:
-        17,
+      fontSize: 19,
 
-      fontWeight:
-        '900',
+      fontWeight: '900',
     },
 
     orderErrorContent: {
-      flex:
-        1,
+      flex: 1,
     },
 
     orderErrorTitle: {
       color:
         '#1a1a1a',
 
-      fontSize:
-        11,
+      fontSize: 13,
 
-      fontWeight:
-        '800',
+      fontWeight: '800',
     },
 
     orderErrorText: {
       color:
         '#6a6265',
 
-      fontSize:
-        9,
+      fontSize: 11,
 
-      lineHeight:
-        14,
+      lineHeight: 16,
 
-      marginTop:
-        3,
+      marginTop: 3,
     },
 
     retryButton: {
@@ -2834,661 +3819,21 @@ const styles =
       backgroundColor:
         '#d00018',
 
-      borderRadius:
-        7,
+      borderRadius: 7,
 
-      paddingHorizontal:
-        10,
+      paddingHorizontal: 10,
 
-      paddingVertical:
-        6,
+      paddingVertical: 6,
 
-      marginTop:
-        8,
+      marginTop: 8,
     },
 
     retryButtonText: {
       color:
         '#ffffff',
 
-      fontSize:
-        8,
+      fontSize: 10,
 
-      fontWeight:
-        '800',
-    },
-
-    /* =====================================================
-     * Recent Orders
-     * ===================================================== */
-
-    recentActivitySection: {
-      marginBottom:
-        20,
-
-      marginTop:
-        20,
-    },
-
-    sectionHeader: {
-      marginBottom:
-        10,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'space-between',
-    },
-
-    sectionHeaderTitle: {
-      color:
-        '#111111',
-
-      fontSize:
-        16,
-
-      lineHeight:
-        21,
-
-      fontWeight:
-        '700',
-    },
-
-    viewAllButton: {
-      minHeight:
-        32,
-
-      justifyContent:
-        'center',
-
-      paddingLeft:
-        12,
-
-      paddingVertical:
-        4,
-    },
-
-    viewAllText: {
-      color:
-        '#d00018',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        16,
-
-      fontWeight:
-        '700',
-    },
-
-    activitiesContainer: {
-      rowGap:
-        10,
-    },
-
-    activityCard: {
-      minHeight:
-        72,
-
-      paddingHorizontal:
-        12,
-
-      paddingVertical:
-        10,
-
-      backgroundColor:
-        '#ffffff',
-
-      borderRadius:
-        11,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      elevation:
-        2,
-
-      shadowColor:
-        '#000000',
-
-      shadowOffset: {
-        width:
-          0,
-
-        height:
-          2,
-      },
-
-      shadowOpacity:
-        0.06,
-
-      shadowRadius:
-        5,
-    },
-
-    successIconContainer: {
-      width:
-        40,
-
-      height:
-        40,
-
-      marginRight:
-        11,
-
-      borderRadius:
-        8,
-
-      backgroundColor:
-        '#e3f2e9',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-    },
-
-    successIconCircle: {
-      width:
-        17,
-
-      height:
-        17,
-
-      borderRadius:
-        9,
-
-      backgroundColor:
-        '#00884a',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-    },
-
-    successCheck: {
-      color:
-        '#ffffff',
-
-      fontSize:
-        10,
-
-      lineHeight:
-        12,
-
-      fontWeight:
-        '900',
-    },
-
-    activityInformation: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-
-      paddingRight:
-        8,
-    },
-
-    activityTitle: {
-      color:
-        '#141414',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        16,
-
-      fontWeight:
-        '700',
-    },
-
-    activityTitleSmall: {
-      fontSize:
-        10.5,
-    },
-
-    activityAddress: {
-      marginTop:
-        1,
-
-      color:
-        '#4f596d',
-
-      fontSize:
-        10,
-
-      lineHeight:
-        13,
-    },
-
-    activityAddressSmall: {
-      fontSize:
-        9,
-    },
-
-    activityTime: {
-      color:
-        '#4f596d',
-
-      fontSize:
-        10,
-
-      lineHeight:
-        13,
-
-      marginTop:
-        1,
-    },
-
-    activityAmount: {
-      color:
-        '#111111',
-
-      fontSize:
-        12,
-
-      lineHeight:
-        16,
-
-      fontWeight:
-        '800',
-    },
-
-    activityAmountSmall: {
-      fontSize:
-        10.5,
-    },
-
-    recentLoadingCard: {
-      minHeight:
-        80,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      backgroundColor:
-        '#ffffff',
-
-      borderRadius:
-        11,
-    },
-
-    recentLoadingText: {
-      color:
-        '#68718d',
-
-      fontSize:
-        10,
-
-      marginLeft:
-        8,
-    },
-
-    noRecentOrderCard: {
-      minHeight:
-        130,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      backgroundColor:
-        '#ffffff',
-
-      borderRadius:
-        11,
-
-      padding:
-        18,
-    },
-
-    noRecentOrderIcon: {
-      width:
-        38,
-
-      height:
-        38,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      backgroundColor:
-        '#fde8ea',
-
-      borderRadius:
-        19,
-    },
-
-    noRecentOrderIconText: {
-      color:
-        '#d00018',
-
-      fontSize:
-        17,
-    },
-
-    noRecentOrderTitle: {
-      color:
-        '#111111',
-
-      fontSize:
-        12,
-
-      fontWeight:
-        '800',
-
-      marginTop:
-        8,
-    },
-
-    noRecentOrderText: {
-      color:
-        '#6e7584',
-
-      fontSize:
-        9,
-
-      marginTop:
-        4,
-    },
-
-    /* =====================================================
-     * Route
-     * ===================================================== */
-
-    routeSection: {
-      marginBottom:
-        10,
-    },
-
-    routeCard: {
-      width:
-        '100%',
-
-      height:
-        160,
-
-      overflow:
-        'hidden',
-
-      backgroundColor:
-        '#d8dce0',
-
-      borderRadius:
-        12,
-
-      elevation:
-        3,
-
-      shadowColor:
-        '#000000',
-
-      shadowOffset: {
-        width:
-          0,
-
-        height:
-          3,
-      },
-
-      shadowOpacity:
-        0.14,
-
-      shadowRadius:
-        7,
-    },
-
-    routeCardPressed: {
-      opacity:
-        0.92,
-
-      transform: [
-        {
-          scale:
-            0.995,
-        },
-      ],
-    },
-
-    routeBackground: {
-      flex:
-        1,
-
-      justifyContent:
-        'flex-end',
-    },
-
-    routeBackgroundImage: {
-      borderRadius:
-        12,
-    },
-
-    routeOverlay: {
-      ...StyleSheet.absoluteFillObject,
-
-      backgroundColor:
-        'rgba(18, 23, 29, 0.26)',
-    },
-
-    mapPin: {
-      position:
-        'absolute',
-
-      top:
-        50,
-
-      left:
-        '49%',
-
-      alignItems:
-        'center',
-    },
-
-    mapPinCircle: {
-      width:
-        16,
-
-      height:
-        16,
-
-      borderWidth:
-        2,
-
-      borderColor:
-        '#ffffff',
-
-      borderRadius:
-        8,
-
-      backgroundColor:
-        '#d00018',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-    },
-
-    mapPinInnerDot: {
-      width:
-        4,
-
-      height:
-        4,
-
-      borderRadius:
-        2,
-
-      backgroundColor:
-        '#ffffff',
-    },
-
-    mapPinTriangle: {
-      width:
-        0,
-
-      height:
-        0,
-
-      marginTop:
-        -2,
-
-      borderLeftWidth:
-        4,
-
-      borderRightWidth:
-        4,
-
-      borderTopWidth:
-        7,
-
-      borderLeftColor:
-        'transparent',
-
-      borderRightColor:
-        'transparent',
-
-      borderTopColor:
-        '#d00018',
-    },
-
-    routeContent: {
-      paddingHorizontal:
-        12,
-
-      paddingBottom:
-        13,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-end',
-
-      justifyContent:
-        'space-between',
-    },
-
-    routeInformation: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-
-      paddingRight:
-        12,
-    },
-
-    activeRouteLabel: {
-      marginBottom:
-        2,
-
-      color:
-        '#ffffff',
-
-      fontSize:
-        9,
-
-      lineHeight:
-        12,
-
-      fontWeight:
-        '700',
-
-      letterSpacing:
-        0.3,
-    },
-
-    routeTitle: {
-      color:
-        '#ffffff',
-
-      fontSize:
-        17,
-
-      lineHeight:
-        22,
-
-      fontWeight:
-        '800',
-    },
-
-    routeTitleSmall: {
-      fontSize:
-        14,
-
-      lineHeight:
-        19,
-    },
-
-    navigationButton: {
-      width:
-        45,
-
-      height:
-        45,
-
-      borderRadius:
-        23,
-
-      backgroundColor:
-        '#d00018',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-    },
-
-    navigationArrow: {
-      marginLeft:
-        -2,
-
-      color:
-        '#ffffff',
-
-      fontSize:
-        21,
-
-      lineHeight:
-        24,
-
-      fontWeight:
-        '700',
-
-      transform: [
-        {
-          rotate:
-            '-45deg',
-        },
-      ],
+      fontWeight: '800',
     },
   });

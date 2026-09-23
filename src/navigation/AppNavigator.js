@@ -14,6 +14,7 @@ import OrderDetailScreen from '../screens/OrderDetail';
 import HomeScreen from '../screens/HomeScreen';
 import Otp from '../screens/Otp';
 import ResetPassword from '../screens/ResetPassword';
+import TotalOrder from '../screens/TotalOrders';
 
 const Stack = createNativeStackNavigator();
 
@@ -76,6 +77,11 @@ const AppNavigator = () => {
       <Stack.Screen
         name="ResetPassword"
         component={ResetPassword}
+      />
+
+       <Stack.Screen
+        name="TotalOrder"
+        component={TotalOrder}
       />
       
     </Stack.Navigator>

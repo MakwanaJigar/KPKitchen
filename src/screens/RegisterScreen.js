@@ -1,10 +1,4 @@
-import React, {
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
-
-import {SafeAreaView} from 'react-native-safe-area-context';
+import React, { useEffect, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
@@ -12,6 +6,7 @@ import {
   Animated,
   Easing,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -24,268 +19,523 @@ import {
   View,
 } from 'react-native';
 
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import axios from 'axios';
+
+import { launchImageLibrary } from 'react-native-image-picker';
+
+/* =========================================================
+ * API
+ * ========================================================= */
 
 const REGISTER_API_URL =
   'https://replete-software.com/projects/kp_admin/api/driver/register';
 
-const SUCCESS_POPUP_DURATION = 3000;
+const SUCCESS_POPUP_DURATION = 3500;
 
-const RegisterScreen = ({navigation}) => {
-  const {width, height} = useWindowDimensions();
+/* =========================================================
+ * NORMAL INPUT
+ * ========================================================= */
 
-  const [name, setName] = useState('');
+const FormInput = ({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  icon,
+  keyboardType = 'default',
+  autoCapitalize = 'none',
+  maxLength,
+  multiline = false,
+  editable = true,
+}) => {
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>{label}</Text>
+
+      <View
+        style={[styles.inputContainer, multiline && styles.multilineContainer]}
+      >
+        <View pointerEvents="none" style={styles.inputIconContainer}>
+          <Image source={icon} style={styles.inputImage} />
+        </View>
+
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="#9ca3af"
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          maxLength={maxLength}
+          multiline={multiline}
+          editable={editable}
+          style={[styles.textInput, multiline && styles.multilineInput]}
+        />
+      </View>
+    </View>
+  );
+};
+
+/* =========================================================
+ * IMAGE FIELD
+ * ========================================================= */
+
+const ImageUploadField = ({
+  label,
+  description,
+  imageUri,
+  onPress,
+  disabled = false,
+  circular = false,
+}) => {
+  return (
+    <View style={styles.uploadGroup}>
+      <Text style={styles.inputLabel}>{label}</Text>
+
+      <Pressable
+        disabled={disabled}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.uploadContainer,
+
+          pressed && !disabled && styles.uploadPressed,
+
+          disabled && styles.uploadDisabled,
+        ]}
+      >
+        <View
+          style={[
+            styles.uploadPreviewContainer,
+
+            circular && styles.uploadPreviewCircular,
+          ]}
+        >
+          {imageUri ? (
+            <Image
+              source={{
+                uri: imageUri,
+              }}
+              resizeMode="cover"
+              style={[
+                styles.uploadPreview,
+
+                circular && styles.uploadPreviewCircular,
+              ]}
+            />
+          ) : (
+            <View style={styles.uploadPlaceholder}>
+              <Text style={styles.uploadPlus}>+</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.uploadTextArea}>
+          <Text style={styles.uploadTitle}>
+            {imageUri ? 'Image Selected' : 'Choose Image'}
+          </Text>
+
+          <Text style={styles.uploadDescription}>{description}</Text>
+
+          {imageUri && <Text style={styles.changeImage}>Tap to change</Text>}
+        </View>
+
+        <Text style={styles.uploadArrow}>›</Text>
+      </Pressable>
+    </View>
+  );
+};
+
+/* =========================================================
+ * REGISTER
+ * ========================================================= */
+
+const RegisterScreen = ({ navigation }) => {
+  const { width, height } = useWindowDimensions();
+
+  /* =======================================================
+   * PERSONAL
+   * ======================================================= */
+
+  const [firstName, setFirstName] = useState('');
+
+  const [lastName, setLastName] = useState('');
+
+  const [phone, setPhone] = useState('');
+
   const [email, setEmail] = useState('');
-  const [mobileNumber, setMobileNumber] = useState('');
-  const [licenseNumber, setLicenseNumber] = useState('');
-  const [vehicleNumber, setVehicleNumber] = useState('');
+
+  const [address, setAddress] = useState('');
+
+  /* =======================================================
+   * VEHICLE
+   * ======================================================= */
+
+  const [vehicleRegNo, setVehicleRegNo] = useState('');
+
+  /* =======================================================
+   * LICENCE
+   * ======================================================= */
+
+  const [licenseNo, setLicenseNo] = useState('');
+
+  const [licenseExpiry, setLicenseExpiry] = useState('');
+
+  const [licenseFront, setLicenseFront] = useState(null);
+
+  const [licenseBack, setLicenseBack] = useState(null);
+
+  /* =======================================================
+   * DELIVERY
+   * ======================================================= */
+
+  const [assignedZip, setAssignedZip] = useState('');
+
+  /* =======================================================
+   * PROFILE
+   * ======================================================= */
+
+  const [profileImage, setProfileImage] = useState(null);
+
+  /* =======================================================
+   * PASSWORD
+   * ======================================================= */
+
   const [password, setPassword] = useState('');
 
-  const [
-    passwordConfirmation,
-    setPasswordConfirmation,
-  ] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] = useState('');
 
-  const [showPassword, setShowPassword] =
-    useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const [
-    showConfirmPassword,
-    setShowConfirmPassword,
-  ] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  /* =======================================================
+   * UI
+   * ======================================================= */
 
   const [loading, setLoading] = useState(false);
 
-  const [
-    successPopupVisible,
-    setSuccessPopupVisible,
-  ] = useState(false);
+  const [successVisible, setSuccessVisible] = useState(false);
 
-  const [
-    successPopupMessage,
-    setSuccessPopupMessage,
-  ] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const successProgress = useRef(
-    new Animated.Value(0),
-  ).current;
+  const progress = useRef(new Animated.Value(0)).current;
 
-  const redirectTimerRef = useRef(null);
+  const timerRef = useRef(null);
+
+  /* =======================================================
+   * RESPONSIVE
+   * ======================================================= */
 
   const isSmallScreen = width <= 360;
+
   const isShortScreen = height <= 700;
 
-  const horizontalPadding = isSmallScreen
-    ? 18
-    : 24;
+  const horizontalPadding = isSmallScreen ? 18 : 24;
 
-  const cardWidth = Math.min(
-    width - horizontalPadding * 2,
-    460,
-  );
+  const cardWidth = Math.min(width - horizontalPadding * 2, 460);
 
-  const deviceName =
-    Platform.OS === 'android'
-      ? 'KP Kitchen Android App'
-      : 'KP Kitchen iOS App';
+  /* =======================================================
+   * CLEANUP
+   * ======================================================= */
 
   useEffect(() => {
     return () => {
-      if (redirectTimerRef.current) {
-        clearTimeout(redirectTimerRef.current);
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
       }
 
-      successProgress.stopAnimation();
+      progress.stopAnimation();
     };
-  }, [successProgress]);
+  }, [progress]);
 
-  const validateEmail = emailValue => {
-    const emailPattern =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  /* =======================================================
+   * EMAIL
+   * ======================================================= */
 
-    return emailPattern.test(
-      emailValue.trim(),
+  const validateEmail = value =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+  /* =======================================================
+   * DATE
+   * ======================================================= */
+
+  const validateDate = value => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return false;
+    }
+
+    const [year, month, day] = value.split('-').map(Number);
+
+    const date = new Date(year, month - 1, day);
+
+    return (
+      date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
     );
   };
 
-  const clearForm = () => {
-    setName('');
-    setEmail('');
-    setMobileNumber('');
-    setLicenseNumber('');
-    setVehicleNumber('');
-    setPassword('');
-    setPasswordConfirmation('');
-    setShowPassword(false);
-    setShowConfirmPassword(false);
+  /* =======================================================
+   * LICENCE EXPIRY INPUT
+   * ======================================================= */
+
+  const handleExpiryChange = text => {
+    const digits = text.replace(/[^0-9]/g, '').slice(0, 8);
+
+    let formatted = digits;
+
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 4)}-${digits.slice(4)}`;
+    }
+
+    if (digits.length > 6) {
+      formatted = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(
+        6,
+        8,
+      )}`;
+    }
+
+    setLicenseExpiry(formatted);
   };
 
-  const navigateToLogin = (
-    registeredEmail,
-    registrationMessage,
-  ) => {
-    navigation.reset({
-      index: 0,
-      routes: [
-        {
-          name: 'Login',
-          params: {
-            registeredEmail,
-            registrationMessage,
-          },
-        },
-      ],
-    });
+  /* =======================================================
+   * IMAGE
+   * ======================================================= */
+
+  const chooseImage = async type => {
+    if (loading || successVisible) {
+      return;
+    }
+
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'photo',
+
+        includeBase64: true,
+
+        quality: 0.7,
+
+        maxWidth: 1400,
+
+        maxHeight: 1400,
+
+        selectionLimit: 1,
+      });
+
+      if (result?.didCancel) {
+        return;
+      }
+
+      if (result?.errorCode) {
+        Alert.alert(
+          'Image Error',
+          result?.errorMessage || 'Unable to select image.',
+        );
+
+        return;
+      }
+
+      const asset = result?.assets?.[0];
+
+      if (!asset?.base64) {
+        Alert.alert(
+          'Image Error',
+          'Unable to convert the selected image to Base64.',
+        );
+
+        return;
+      }
+
+      const mimeType = asset?.type || 'image/jpeg';
+
+      const imageData = {
+        uri: asset?.uri,
+
+        type: mimeType,
+
+        fileName: asset?.fileName,
+
+        base64: `data:${mimeType};base64,${asset.base64}`,
+      };
+
+      if (type === 'profile') {
+        setProfileImage(imageData);
+      }
+
+      if (type === 'front') {
+        setLicenseFront(imageData);
+      }
+
+      if (type === 'back') {
+        setLicenseBack(imageData);
+      }
+    } catch (error) {
+      console.log('IMAGE PICKER ERROR:', error);
+
+      Alert.alert('Image Error', error?.message || 'Unable to select image.');
+    }
   };
 
-  const showSuccessPopup = (
-    registeredEmail,
-    registrationMessage,
-  ) => {
-    setSuccessPopupMessage(
-      registrationMessage,
+  /* =======================================================
+   * API ERROR
+   * ======================================================= */
+
+  const getRegistrationError = error => {
+    if (!error?.response) {
+      if (error?.code === 'ECONNABORTED') {
+        return 'The registration request timed out. Please try again.';
+      }
+
+      return error?.message || 'Unable to connect to the registration server.';
+    }
+
+    const data = error.response.data;
+
+    if (data?.errors && typeof data.errors === 'object') {
+      const messages = Object.values(data.errors).flat().filter(Boolean);
+
+      if (messages.length > 0) {
+        return messages.join('\n');
+      }
+    }
+
+    return (
+      data?.message || data?.error || 'Unable to register your driver account.'
     );
+  };
 
-    setSuccessPopupVisible(true);
+  /* =======================================================
+   * SUCCESS
+   * ======================================================= */
 
-    successProgress.setValue(0);
+  const showSuccess = (registeredEmail, message) => {
+    setSuccessMessage(message);
 
-    Animated.timing(successProgress, {
+    setSuccessVisible(true);
+
+    progress.setValue(0);
+
+    Animated.timing(progress, {
       toValue: 1,
+
       duration: SUCCESS_POPUP_DURATION,
+
       easing: Easing.linear,
+
       useNativeDriver: false,
     }).start();
 
-    if (redirectTimerRef.current) {
-      clearTimeout(
-        redirectTimerRef.current,
-      );
-    }
-
-    redirectTimerRef.current = setTimeout(
+    timerRef.current = setTimeout(
       () => {
-        setSuccessPopupVisible(false);
+        setSuccessVisible(false);
 
-        clearForm();
+        navigation.reset({
+          index: 0,
 
-        navigateToLogin(
-          registeredEmail,
-          registrationMessage,
-        );
+          routes: [
+            {
+              name: 'Login',
+
+              params: {
+                registeredEmail,
+
+                registrationMessage: message,
+              },
+            },
+          ],
+        });
       },
+
       SUCCESS_POPUP_DURATION,
     );
   };
 
-  const getRegistrationErrorMessage =
-    error => {
-      if (!error.response) {
-        if (
-          error.code === 'ECONNABORTED'
-        ) {
-          return 'The request timed out. Please try again.';
-        }
-
-        return 'Unable to connect to the server. Please check your internet connection.';
-      }
-
-      const responseData =
-        error.response.data;
-
-      if (responseData?.errors) {
-        const messages = Object.values(
-          responseData.errors,
-        )
-          .flat()
-          .filter(Boolean);
-
-        if (messages.length > 0) {
-          return messages.join('\n');
-        }
-      }
-
-      return (
-        responseData?.message ||
-        responseData?.error ||
-        'Unable to create your account. Please try again.'
-      );
-    };
+  /* =======================================================
+   * REGISTER
+   * ======================================================= */
 
   const handleRegister = async () => {
-    if (
-      loading ||
-      successPopupVisible
-    ) {
+    if (loading || successVisible) {
       return;
     }
 
-    const cleanName = name.trim();
+    const cleanFirstName = firstName.trim();
 
-    const cleanEmail = email
-      .trim()
-      .toLowerCase();
+    const cleanLastName = lastName.trim();
 
-    const cleanMobile =
-      mobileNumber.trim();
+    const fullName = `${cleanFirstName} ${cleanLastName}`.trim();
 
-    const cleanLicense = licenseNumber
-      .trim()
-      .toUpperCase();
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
 
-    const cleanVehicle = vehicleNumber
-      .trim()
-      .toUpperCase();
+    const cleanEmail = email.trim().toLowerCase();
 
-    if (!cleanName) {
-      Alert.alert(
-        'Name required',
-        'Please enter your full name.',
-      );
+    const cleanAddress = address.trim();
+
+    const cleanVehicle = vehicleRegNo.trim().toUpperCase();
+
+    const cleanLicense = licenseNo.trim().toUpperCase();
+
+    const cleanExpiry = licenseExpiry.trim();
+
+    const cleanAssignedZip = assignedZip
+      .split(',')
+      .map(zip => zip.trim())
+      .filter(Boolean)
+      .join(', ');
+
+    /* =================================================
+     * VALIDATION
+     * ================================================= */
+
+    if (!cleanFirstName) {
+      Alert.alert('First Name Required', 'Please enter your first name.');
 
       return;
     }
 
-    if (cleanName.length < 2) {
-      Alert.alert(
-        'Invalid name',
-        'Please enter a valid full name.',
-      );
+    if (!cleanLastName) {
+      Alert.alert('Last Name Required', 'Please enter your last name.');
+
+      return;
+    }
+
+    if (!cleanPhone) {
+      Alert.alert('Phone Required', 'Please enter your phone number.');
+
+      return;
+    }
+
+    if (cleanPhone.length < 10) {
+      Alert.alert('Invalid Phone', 'Please enter a valid phone number.');
 
       return;
     }
 
     if (!cleanEmail) {
-      Alert.alert(
-        'Email required',
-        'Please enter your email address.',
-      );
+      Alert.alert('Email Required', 'Please enter your email address.');
 
       return;
     }
 
     if (!validateEmail(cleanEmail)) {
-      Alert.alert(
-        'Invalid email',
-        'Please enter a valid email address.',
-      );
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
 
       return;
     }
 
-    if (!cleanMobile) {
-      Alert.alert(
-        'Mobile number required',
-        'Please enter your mobile number.',
-      );
+    if (!cleanAddress) {
+      Alert.alert('Address Required', 'Please enter your residential address.');
 
       return;
     }
 
-    if (cleanMobile.length < 10) {
+    if (!cleanVehicle) {
       Alert.alert(
-        'Invalid mobile number',
-        'Mobile number must contain at least 10 digits.',
+        'Vehicle Registration Required',
+        'Please enter your vehicle registration number.',
       );
 
       return;
@@ -293,942 +543,745 @@ const RegisterScreen = ({navigation}) => {
 
     if (!cleanLicense) {
       Alert.alert(
-        'Licence number required',
-        'Please enter your driving licence number.',
+        'Licence Number Required',
+        'Please enter your licence number.',
       );
 
       return;
     }
 
-    if (!cleanVehicle) {
+    if (!cleanExpiry) {
       Alert.alert(
-        'Vehicle number required',
-        'Please enter your vehicle number.',
+        'Licence Expiry Required',
+        'Please enter the licence expiry date.',
       );
 
       return;
     }
 
-    if (!password.trim()) {
+    if (!validateDate(cleanExpiry)) {
+      Alert.alert('Invalid Expiry Date', 'Use YYYY-MM-DD format.');
+
+      return;
+    }
+
+    const expiry = new Date(`${cleanExpiry}T23:59:59`);
+
+    if (expiry.getTime() < Date.now()) {
       Alert.alert(
-        'Password required',
-        'Please enter your password.',
+        'Licence Expired',
+        'The licence expiry date must be in the future.',
       );
+
+      return;
+    }
+
+    if (!cleanAssignedZip) {
+      Alert.alert(
+        'ZIP Required',
+        'Please enter at least one assigned ZIP/postcode.',
+      );
+
+      return;
+    }
+
+    if (!licenseFront?.base64) {
+      Alert.alert(
+        'Licence Front Required',
+        'Please upload the front side of your driving licence.',
+      );
+
+      return;
+    }
+
+    if (!licenseBack?.base64) {
+      Alert.alert(
+        'Licence Back Required',
+        'Please upload the back side of your driving licence.',
+      );
+
+      return;
+    }
+
+    if (!profileImage?.base64) {
+      Alert.alert(
+        'Profile Image Required',
+        'Please upload your profile image.',
+      );
+
+      return;
+    }
+
+    if (!password) {
+      Alert.alert('Password Required', 'Please enter a password.');
 
       return;
     }
 
     if (password.length < 8) {
       Alert.alert(
-        'Invalid password',
+        'Password Too Short',
         'Password must contain at least 8 characters.',
       );
 
       return;
     }
 
-    if (
-      !passwordConfirmation.trim()
-    ) {
+    if (!passwordConfirmation) {
+      Alert.alert('Confirm Password', 'Please confirm your password.');
+
+      return;
+    }
+
+    if (password !== passwordConfirmation) {
       Alert.alert(
-        'Confirm password required',
-        'Please confirm your password.',
+        'Password Mismatch',
+        'Password and confirm password must match.',
       );
 
       return;
     }
 
-    if (
-      password !==
-      passwordConfirmation
-    ) {
-      Alert.alert(
-        'Password mismatch',
-        'Password and confirm password must be the same.',
-      );
-
-      return;
-    }
+    /* =================================================
+     * REQUEST
+     * ================================================= */
 
     const requestData = {
-      name: cleanName,
+      first_name: cleanFirstName,
 
-      /*
-       * Both fields are included because
-       * your API previously validated "email",
-       * while your supplied field list used "mail".
-       */
+      last_name: cleanLastName,
+
+      name: fullName,
+
+      phone: cleanPhone,
+
       email: cleanEmail,
-      mail: cleanEmail,
 
-      phone: cleanMobile,
       password,
-      password_confirmation:
-        passwordConfirmation,
-      device_name: deviceName,
-      license_number: cleanLicense,
-      vehicle_number: cleanVehicle,
+
+      password_confirmation: passwordConfirmation,
+
+      confirm_password: passwordConfirmation,
+
+      address: cleanAddress,
+
+      vehicle_reg_no: cleanVehicle,
+
+      license_no: cleanLicense,
+
+      license_expiry: cleanExpiry,
+
+      assigned_zip: cleanAssignedZip,
+
+      license_copy_front: licenseFront.base64,
+
+      license_copy_back: licenseBack.base64,
+
+      profile_image: profileImage.base64,
     };
 
     try {
       setLoading(true);
 
-      console.log(
-        'Register API URL:',
-        REGISTER_API_URL,
-      );
+      console.log('REGISTER API:', REGISTER_API_URL);
 
-      console.log(
-        'Register request:',
-        {
-          ...requestData,
-          password: '********',
-          password_confirmation:
-            '********',
-        },
-      );
+      console.log('REGISTER PAYLOAD:', {
+        first_name: requestData.first_name,
+
+        last_name: requestData.last_name,
+
+        name: requestData.name,
+
+        phone: requestData.phone,
+
+        email: requestData.email,
+
+        address: requestData.address,
+
+        vehicle_reg_no: requestData.vehicle_reg_no,
+
+        license_no: requestData.license_no,
+
+        license_expiry: requestData.license_expiry,
+
+        assigned_zip: requestData.assigned_zip,
+
+        password: '[HIDDEN]',
+
+        password_confirmation: '[HIDDEN]',
+
+        license_copy_front: '[BASE64 IMAGE]',
+
+        license_copy_back: '[BASE64 IMAGE]',
+
+        profile_image: '[BASE64 IMAGE]',
+      });
 
       const response = await axios.post(
         REGISTER_API_URL,
+
         requestData,
+
         {
           headers: {
-            Accept:
-              'application/json',
-            'Content-Type':
-              'application/json',
+            Accept: 'application/json',
+
+            'Content-Type': 'application/json',
           },
-          timeout: 20000,
+
+          timeout: 60000,
+
+          maxBodyLength: Infinity,
+
+          maxContentLength: Infinity,
         },
       );
 
-      console.log(
-        'Registration response:',
-        response.data,
-      );
+      console.log('REGISTER RESPONSE:', response?.data);
 
       if (
-        response.data?.status ===
-          false ||
-        response.data?.success ===
-          false
+        response?.data?.success === false ||
+        response?.data?.status === false
       ) {
         Alert.alert(
-          'Registration failed',
-          response.data?.message ||
-            'Unable to create your account.',
+          'Registration Failed',
+          response?.data?.message || 'Unable to register your account.',
         );
 
         return;
       }
 
-      const successMessage =
-        response.data?.message ||
-        'Your driver account has been created successfully.';
+      const message = response?.data?.message
+        ? `${response.data.message}\n\nYour registration is pending admin approval. You can login after the administrator approves your account.`
+        : 'Your driver registration has been submitted successfully. Your account is pending admin approval. You can login after the administrator approves your account.';
 
-      showSuccessPopup(
-        cleanEmail,
-        successMessage,
-      );
-    } catch (registrationError) {
-      console.log(
-        'Registration error status:',
-        registrationError.response
-          ?.status,
-      );
+      showSuccess(cleanEmail, message);
+    } catch (error) {
+      console.log('REGISTER ERROR STATUS:', error?.response?.status);
 
-      console.log(
-        'Registration error response:',
-        registrationError.response
-          ?.data,
-      );
+      console.log('REGISTER ERROR DATA:', error?.response?.data);
 
-      console.log(
-        'Registration error message:',
-        registrationError.message,
-      );
+      console.log('REGISTER ERROR:', error?.message);
 
-      Alert.alert(
-        'Registration failed',
-        getRegistrationErrorMessage(
-          registrationError,
-        ),
-      );
+      Alert.alert('Registration Failed', getRegistrationError(error));
     } finally {
       setLoading(false);
     }
   };
 
-  const successProgressWidth =
-    successProgress.interpolate({
-      inputRange: [0, 1],
-      outputRange: ['0%', '100%'],
-    });
+  const progressWidth = progress.interpolate({
+    inputRange: [0, 1],
+
+    outputRange: ['0%', '100%'],
+  });
+
+  /* =======================================================
+   * UI
+   * ======================================================= */
 
   return (
-    <SafeAreaView
-      style={styles.safeArea}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#f8f9fb"
-      />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8f9fb" />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingHorizontal:
-              horizontalPadding,
+      {/* ==================================================
+          KEYBOARD + SCROLL FIX
+          ================================================== */}
 
-            paddingTop: isShortScreen
-              ? 20
-              : 38,
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
 
-            paddingBottom: 36,
-          },
-        ]}
-        showsVerticalScrollIndicator={
-          false
-        }
-        keyboardShouldPersistTaps="handled">
-        <View style={styles.page}>
-          <View
-            pointerEvents="none"
-            style={[
-              styles.decorativeCircle,
-              styles.topCircle,
-              {
-                width: width * 0.58,
-                height: width * 0.58,
-                borderRadius:
-                  width * 0.29,
-              },
-            ]}
-          />
+            {
+              paddingHorizontal: horizontalPadding,
 
-          <View
-            pointerEvents="none"
-            style={[
-              styles.decorativeCircle,
-              styles.bottomCircle,
-              {
-                width: width * 0.42,
-                height: width * 0.42,
-                borderRadius:
-                  width * 0.21,
-              },
-            ]}
-          />
+              paddingTop: isShortScreen ? 20 : 38,
 
-          <View
-            style={styles.brandSection}>
+              /*
+               * Extra space so password,
+               * confirm password and button
+               * can scroll above keyboard.
+               */
+              paddingBottom: 120,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          /*
+           * User can tap inputs/buttons
+           * while keyboard is visible.
+           */
+          keyboardShouldPersistTaps="handled"
+          /*
+           * Scrolling does NOT automatically
+           * close the keyboard.
+           */
+          keyboardDismissMode="none"
+          /*
+           * Keep scrolling active while
+           * keyboard is open.
+           */
+          scrollEnabled={true}
+          /*
+           * Helpful for Android.
+           */
+          nestedScrollEnabled={true}
+          bounces={false}
+          overScrollMode="never"
+        >
+          <View style={styles.page}>
+            {/* DECORATION */}
+
             <View
+              pointerEvents="none"
               style={[
-                styles.logoContainer,
+                styles.decorativeCircle,
+                styles.topCircle,
+
                 {
-                  width: isSmallScreen
-                    ? 74
-                    : 86,
+                  width: width * 0.58,
 
-                  height: isSmallScreen
-                    ? 74
-                    : 86,
+                  height: width * 0.58,
 
-                  borderRadius:
-                    isSmallScreen
-                      ? 23
-                      : 27,
+                  borderRadius: width * 0.29,
                 },
-              ]}>
-              <Image
-                source={require('../assets/delivery-bike-light.png')}
-                resizeMode="contain"
-                style={[
-                  styles.logo,
-                  {
-                    width:
-                      isSmallScreen
-                        ? 40
-                        : 48,
+              ]}
+            />
 
-                    height:
-                      isSmallScreen
-                        ? 40
-                        : 48,
+            <View
+              pointerEvents="none"
+              style={[
+                styles.decorativeCircle,
+                styles.bottomCircle,
+
+                {
+                  width: width * 0.42,
+
+                  height: width * 0.42,
+
+                  borderRadius: width * 0.21,
+                },
+              ]}
+            />
+
+            {/* BRAND */}
+
+            <View style={styles.brandSection}>
+              <View
+                style={[
+                  styles.logoContainer,
+
+                  {
+                    width: isSmallScreen ? 74 : 86,
+
+                    height: isSmallScreen ? 74 : 86,
+
+                    borderRadius: isSmallScreen ? 23 : 27,
                   },
                 ]}
-              />
-            </View>
+              >
+                <Image
+                  source={require('../assets/delivery-bike-light.png')}
+                  resizeMode="contain"
+                  style={[
+                    styles.logo,
 
-            <Text
-              style={[
-                styles.brandTitle,
-                {
-                  fontSize:
-                    isSmallScreen
-                      ? 27
-                      : 32,
-                },
-              ]}>
-              Create Account
-            </Text>
+                    {
+                      width: isSmallScreen ? 40 : 48,
 
-            <Text
-              style={[
-                styles.brandSubtitle,
-                {
-                  fontSize:
-                    isSmallScreen
-                      ? 14
-                      : 15,
-                },
-              ]}>
-              Register your driver
-              account to manage
-              deliveries and assigned
-              orders.
-            </Text>
-          </View>
+                      height: isSmallScreen ? 40 : 48,
+                    },
+                  ]}
+                />
+              </View>
 
-          <View
-            style={[
-              styles.registerCard,
-              {
-                width: cardWidth,
-
-                padding:
-                  isSmallScreen
-                    ? 18
-                    : 24,
-
-                borderRadius:
-                  isSmallScreen
-                    ? 24
-                    : 28,
-              },
-            ]}>
-            <View
-              style={styles.cardHeader}>
               <Text
                 style={[
-                  styles.cardTitle,
+                  styles.brandTitle,
+
                   {
-                    fontSize:
-                      isSmallScreen
-                        ? 22
-                        : 25,
+                    fontSize: isSmallScreen ? 27 : 32,
                   },
-                ]}>
-                Driver Registration
+                ]}
+              >
+                Create Account
               </Text>
 
-              <Text
-                style={
-                  styles.cardDescription
-                }>
-                Enter your personal and
-                vehicle details.
+              <Text style={styles.brandSubtitle}>
+                Register as a delivery driver and wait for administrator
+                approval.
               </Text>
             </View>
 
-            {/* Full Name */}
+            {/* CARD */}
 
             <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Full Name
+              style={[
+                styles.registerCard,
+
+                {
+                  width: cardWidth,
+
+                  padding: isSmallScreen ? 18 : 24,
+
+                  borderRadius: isSmallScreen ? 24 : 28,
+                },
+              ]}
+            >
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>Driver Registration</Text>
+
+                <Text style={styles.cardDescription}>
+                  Complete all details below to submit your registration
+                  request.
+                </Text>
+              </View>
+
+              {/* PERSONAL */}
+
+              <Text style={styles.sectionTitle}>Personal Details</Text>
+
+              <FormInput
+                label="First Name"
+                value={firstName}
+                onChangeText={setFirstName}
+                placeholder="Dwight"
+                icon={require('../assets/user-dark.png')}
+                autoCapitalize="words"
+                maxLength={50}
+                editable={!loading}
+              />
+
+              <FormInput
+                label="Last Name"
+                value={lastName}
+                onChangeText={setLastName}
+                placeholder="Schrute"
+                icon={require('../assets/user-dark.png')}
+                autoCapitalize="words"
+                maxLength={50}
+                editable={!loading}
+              />
+
+              <FormInput
+                label="Mobile Number"
+                value={phone}
+                onChangeText={text => setPhone(text.replace(/[^0-9]/g, ''))}
+                placeholder="0499112233"
+                icon={require('../assets/phone-call.png')}
+                keyboardType="phone-pad"
+                maxLength={15}
+                editable={!loading}
+              />
+
+              <FormInput
+                label="Email Address"
+                value={email}
+                onChangeText={setEmail}
+                placeholder="driver.dwight@example.com"
+                icon={require('../assets/mail.png')}
+                keyboardType="email-address"
+                maxLength={120}
+                editable={!loading}
+              />
+
+              <FormInput
+                label="Address"
+                value={address}
+                onChangeText={setAddress}
+                placeholder="Schrute Farms, Adelaide SA 5000"
+                icon={require('../assets/user-dark.png')}
+                autoCapitalize="words"
+                multiline
+                editable={!loading}
+              />
+
+              <ImageUploadField
+                label="Profile Image"
+                description="Upload a clear profile photograph"
+                imageUri={profileImage?.uri}
+                circular
+                disabled={loading}
+                onPress={() => chooseImage('profile')}
+              />
+
+              {/* VEHICLE */}
+
+              <Text style={styles.sectionTitle}>Vehicle Details</Text>
+
+              <FormInput
+                label="Vehicle Registration Number"
+                value={vehicleRegNo}
+                onChangeText={text => setVehicleRegNo(text.toUpperCase())}
+                placeholder="SA-BEET-01"
+                icon={require('../assets/delivery-bike-dark.png')}
+                autoCapitalize="characters"
+                maxLength={30}
+                editable={!loading}
+              />
+
+              {/* LICENCE */}
+
+              <Text style={styles.sectionTitle}>Driving Licence</Text>
+
+              <FormInput
+                label="Licence Number"
+                value={licenseNo}
+                onChangeText={text => setLicenseNo(text.toUpperCase())}
+                placeholder="DL-990011"
+                icon={require('../assets/user-dark.png')}
+                autoCapitalize="characters"
+                maxLength={40}
+                editable={!loading}
+              />
+
+              <FormInput
+                label="Licence Expiry"
+                value={licenseExpiry}
+                onChangeText={handleExpiryChange}
+                placeholder="YYYY-MM-DD"
+                icon={require('../assets/user-dark.png')}
+                keyboardType="number-pad"
+                maxLength={10}
+                editable={!loading}
+              />
+
+              <ImageUploadField
+                label="Licence Copy - Front"
+                description="Upload the front side of your driving licence"
+                imageUri={licenseFront?.uri}
+                disabled={loading}
+                onPress={() => chooseImage('front')}
+              />
+
+              <ImageUploadField
+                label="Licence Copy - Back"
+                description="Upload the back side of your driving licence"
+                imageUri={licenseBack?.uri}
+                disabled={loading}
+                onPress={() => chooseImage('back')}
+              />
+
+              {/* DELIVERY */}
+
+              <Text style={styles.sectionTitle}>Delivery Zone</Text>
+
+              <FormInput
+                label="Assigned ZIP / Postcode"
+                value={assignedZip}
+                onChangeText={text =>
+                  setAssignedZip(text.replace(/[^a-zA-Z0-9,\s-]/g, ''))
+                }
+                placeholder="5000, 5001"
+                icon={require('../assets/user-dark.png')}
+                autoCapitalize="characters"
+                maxLength={100}
+                editable={!loading}
+              />
+
+              <Text style={styles.helperText}>
+                Separate multiple ZIP/postcodes with commas.
               </Text>
 
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/user-dark.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
-                </View>
+              {/* SECURITY */}
 
-                <TextInput
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Enter your full name"
-                  placeholderTextColor="#9ca3af"
-                  autoCapitalize="words"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                  editable={
-                    !loading &&
-                    !successPopupVisible
-                  }
-                  style={
-                    styles.textInput
-                  }
-                />
-              </View>
-            </View>
+              <Text style={styles.sectionTitle}>Account Security</Text>
 
-            {/* Email Address */}
+              {/* PASSWORD */}
 
-            <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Email Address
-              </Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Password</Text>
 
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/mail.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
-                </View>
-
-                <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="example@email.com"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                  editable={
-                    !loading &&
-                    !successPopupVisible
-                  }
-                  style={
-                    styles.textInput
-                  }
-                />
-              </View>
-            </View>
-
-            {/* Mobile Number */}
-
-            <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Mobile Number
-              </Text>
-
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/phone-call.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
-                </View>
-
-                <TextInput
-                  value={mobileNumber}
-                  onChangeText={text => {
-                    const numbersOnly =
-                      text.replace(
-                        /[^0-9]/g,
-                        '',
-                      );
-
-                    setMobileNumber(
-                      numbersOnly,
-                    );
-                  }}
-                  placeholder="Enter mobile number"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="phone-pad"
-                  maxLength={15}
-                  returnKeyType="next"
-                  editable={
-                    !loading &&
-                    !successPopupVisible
-                  }
-                  style={
-                    styles.textInput
-                  }
-                />
-              </View>
-            </View>
-
-            {/* Licence Number */}
-
-            <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Licence Number
-              </Text>
-
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/user-dark.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
-                </View>
-
-                <TextInput
-                  value={licenseNumber}
-                  onChangeText={text => {
-                    setLicenseNumber(
-                      text.toUpperCase(),
-                    );
-                  }}
-                  placeholder="Enter driving licence number"
-                  placeholderTextColor="#9ca3af"
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={30}
-                  returnKeyType="next"
-                  editable={
-                    !loading &&
-                    !successPopupVisible
-                  }
-                  style={
-                    styles.textInput
-                  }
-                />
-              </View>
-            </View>
-
-            {/* Vehicle Number */}
-
-            <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Vehicle Number
-              </Text>
-
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/delivery-bike-dark.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
-                </View>
-
-                <TextInput
-                  value={vehicleNumber}
-                  onChangeText={text => {
-                    setVehicleNumber(
-                      text.toUpperCase(),
-                    );
-                  }}
-                  placeholder="Example: GJ01AB1234"
-                  placeholderTextColor="#9ca3af"
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={20}
-                  returnKeyType="next"
-                  editable={
-                    !loading &&
-                    !successPopupVisible
-                  }
-                  style={
-                    styles.textInput
-                  }
-                />
-              </View>
-            </View>
-
-            {/* Password */}
-
-            <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Password
-              </Text>
-
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/padlock.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
-                </View>
-
-                <TextInput
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Create your password"
-                  placeholderTextColor="#9ca3af"
-                  secureTextEntry={
-                    !showPassword
-                  }
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                  editable={
-                    !loading &&
-                    !successPopupVisible
-                  }
-                  style={
-                    styles.textInput
-                  }
-                />
-
-                <Pressable
-                  disabled={
-                    loading ||
-                    successPopupVisible
-                  }
-                  onPress={() => {
-                    setShowPassword(
-                      previous =>
-                        !previous,
-                    );
-                  }}
-                  hitSlop={10}
-                  style={({pressed}) => [
-                    styles.visibilityButton,
-
-                    pressed &&
-                      styles.pressedOpacity,
-                  ]}>
-                  <Image
-                    source={
-                      showPassword
-                        ? require('../assets/eye-open.png')
-                        : require('../assets/eye-close.png')
-                    }
-                    style={
-                      styles.visibilityImage
-                    }
-                  />
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Confirm Password */}
-
-            <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Confirm Password
-              </Text>
-
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/padlock.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
-                </View>
-
-                <TextInput
-                  value={
-                    passwordConfirmation
-                  }
-                  onChangeText={
-                    setPasswordConfirmation
-                  }
-                  placeholder="Confirm your password"
-                  placeholderTextColor="#9ca3af"
-                  secureTextEntry={
-                    !showConfirmPassword
-                  }
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  editable={
-                    !loading &&
-                    !successPopupVisible
-                  }
-                  onSubmitEditing={
-                    handleRegister
-                  }
-                  style={
-                    styles.textInput
-                  }
-                />
-
-                <Pressable
-                  disabled={
-                    loading ||
-                    successPopupVisible
-                  }
-                  onPress={() => {
-                    setShowConfirmPassword(
-                      previous =>
-                        !previous,
-                    );
-                  }}
-                  hitSlop={10}
-                  style={({pressed}) => [
-                    styles.visibilityButton,
-
-                    pressed &&
-                      styles.pressedOpacity,
-                  ]}>
-                  <Image
-                    source={
-                      showConfirmPassword
-                        ? require('../assets/eye-open.png')
-                        : require('../assets/eye-close.png')
-                    }
-                    style={
-                      styles.visibilityImage
-                    }
-                  />
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Create Account Button */}
-
-            <Pressable
-              onPress={handleRegister}
-              disabled={
-                loading ||
-                successPopupVisible
-              }
-              style={({pressed}) => [
-                styles.registerButton,
-
-                (loading ||
-                  successPopupVisible) &&
-                  styles.registerButtonDisabled,
-
-                pressed &&
-                  !loading &&
-                  !successPopupVisible &&
-                  styles.registerButtonPressed,
-              ]}>
-              {loading ? (
-                <View
-                  style={
-                    styles.loadingButtonContent
-                  }>
-                  <ActivityIndicator
-                    size="small"
-                    color="#ffffff"
-                  />
-
-                  <Text
-                    style={
-                      styles.registerButtonText
-                    }>
-                    Creating Account...
-                  </Text>
-                </View>
-              ) : (
-                <>
-                  <Text
-                    style={
-                      styles.registerButtonText
-                    }>
-                    Create Account
-                  </Text>
-
-                  <View
-                    pointerEvents="none"
-                    style={
-                      styles.registerArrowContainer
-                    }>
+                <View style={styles.inputContainer}>
+                  <View pointerEvents="none" style={styles.inputIconContainer}>
                     <Image
-                      source={require('../assets/right-arrow.png')}
-                      style={
-                        styles.arrowImage
-                      }
+                      source={require('../assets/padlock.png')}
+                      style={styles.inputImage}
                     />
                   </View>
-                </>
-              )}
-            </Pressable>
 
-            {/* Login Link */}
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Create password"
+                    placeholderTextColor="#9ca3af"
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!loading}
+                    returnKeyType="next"
+                    style={styles.textInput}
+                  />
 
-            <View
-              style={styles.loginRow}>
-              <Text
-                style={
-                  styles.loginQuestion
-                }>
-                Already have an account?
-              </Text>
+                  <Pressable
+                    disabled={loading}
+                    onPress={() => setShowPassword(previous => !previous)}
+                    style={styles.visibilityButton}
+                  >
+                    <Image
+                      source={
+                        showPassword
+                          ? require('../assets/eye-open.png')
+                          : require('../assets/eye-close.png')
+                      }
+                      style={styles.visibilityImage}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* CONFIRM PASSWORD */}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Confirm Password</Text>
+
+                <View style={styles.inputContainer}>
+                  <View pointerEvents="none" style={styles.inputIconContainer}>
+                    <Image
+                      source={require('../assets/padlock.png')}
+                      style={styles.inputImage}
+                    />
+                  </View>
+
+                  <TextInput
+                    value={passwordConfirmation}
+                    onChangeText={setPasswordConfirmation}
+                    placeholder="Confirm password"
+                    placeholderTextColor="#9ca3af"
+                    secureTextEntry={!showConfirmPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!loading}
+                    returnKeyType="done"
+                    onSubmitEditing={handleRegister}
+                    style={styles.textInput}
+                  />
+
+                  <Pressable
+                    disabled={loading}
+                    onPress={() =>
+                      setShowConfirmPassword(previous => !previous)
+                    }
+                    style={styles.visibilityButton}
+                  >
+                    <Image
+                      source={
+                        showConfirmPassword
+                          ? require('../assets/eye-open.png')
+                          : require('../assets/eye-close.png')
+                      }
+                      style={styles.visibilityImage}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* BUTTON */}
 
               <Pressable
-                disabled={
-                  loading ||
-                  successPopupVisible
-                }
-                onPress={() => {
-                  navigation.navigate(
-                    'Login',
-                  );
-                }}
-                style={({pressed}) => [
-                  styles.loginButton,
+                onPress={handleRegister}
+                disabled={loading}
+                style={({ pressed }) => [
+                  styles.registerButton,
 
-                  pressed &&
-                    styles.pressedOpacity,
-                ]}>
-                <Text
-                  style={styles.loginText}>
-                  Login
-                </Text>
+                  loading && styles.buttonDisabled,
+
+                  pressed && !loading && styles.buttonPressed,
+                ]}
+              >
+                {loading ? (
+                  <>
+                    <ActivityIndicator size="small" color="#ffffff" />
+
+                    <Text
+                      style={[
+                        styles.registerButtonText,
+                        {
+                          marginLeft: 10,
+                        },
+                      ]}
+                    >
+                      Submitting...
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.registerButtonText}>
+                      Submit Registration
+                    </Text>
+
+                    <Image
+                      source={require('../assets/right-arrow.png')}
+                      style={styles.buttonArrow}
+                    />
+                  </>
+                )}
               </Pressable>
+
+              <View style={styles.loginRow}>
+                <Text style={styles.loginQuestion}>Already registered?</Text>
+
+                <Pressable
+                  disabled={loading}
+                  onPress={() => navigation.navigate('Login')}
+                >
+                  <Text style={styles.loginText}>Login</Text>
+                </Pressable>
+              </View>
             </View>
+
+            <Text style={styles.footer}>
+              Driver registrations require administrator approval before login
+              access is enabled.
+            </Text>
           </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-          <Text
-            style={styles.footerText}>
-            By creating an account, you
-            agree to our Terms and Privacy
-            Policy.
-          </Text>
-        </View>
-      </ScrollView>
-
-      {/* Registration Success Popup */}
+      {/* SUCCESS */}
 
       <Modal
-        visible={successPopupVisible}
+        visible={successVisible}
         transparent
         animationType="fade"
         statusBarTranslucent
-        onRequestClose={() => {}}>
-        <View
-          style={styles.modalOverlay}>
-          <View
-            style={styles.successModalCard}>
-            <View
-              style={
-                styles.successIconOuter
-              }>
-              <View
-                style={
-                  styles.successIconInner
-                }>
-                <Text
-                  style={
-                    styles.successCheckmark
-                  }>
-                  ✓
-                </Text>
+        onRequestClose={() => {}}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.successCard}>
+            <View style={styles.successOuter}>
+              <View style={styles.successInner}>
+                <Text style={styles.successCheck}>✓</Text>
               </View>
             </View>
 
-            <Text
-              style={
-                styles.successModalTitle
-              }>
-              Account Created!
-            </Text>
+            <Text style={styles.successTitle}>Registration Submitted</Text>
 
-            <Text
-              style={
-                styles.successModalMessage
-              }>
-              {successPopupMessage}
-            </Text>
+            <Text style={styles.successMessage}>{successMessage}</Text>
 
-            <View
-              style={
-                styles.redirectMessageContainer
-              }>
-              <ActivityIndicator
-                size="small"
-                color="#d00018"
-              />
-
-              <Text
-                style={
-                  styles.redirectMessage
-                }>
-                Redirecting to login...
+            <View style={styles.pendingBadge}>
+              <Text style={styles.pendingBadgeText}>
+                PENDING ADMIN APPROVAL
               </Text>
             </View>
 
-            <View
-              style={
-                styles.progressTrack
-              }>
+            <Text style={styles.redirectText}>Redirecting to login...</Text>
+
+            <View style={styles.progressTrack}>
               <Animated.View
                 style={[
                   styles.progressBar,
+
                   {
-                    width:
-                      successProgressWidth,
+                    width: progressWidth,
                   },
                 ]}
               />
             </View>
-
-            <Text
-              style={
-                styles.popupDurationText
-              }>
-              You will be redirected in 3
-              seconds
-            </Text>
           </View>
         </View>
       </Modal>
@@ -1238,10 +1291,23 @@ const RegisterScreen = ({navigation}) => {
 
 export default RegisterScreen;
 
+/* =========================================================
+ * STYLES
+ * ========================================================= */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#f8f9fb',
+  },
+
+  /*
+   * IMPORTANT
+   * Allows KeyboardAvoidingView to use
+   * the complete screen height.
+   */
+  keyboardAvoidingView: {
+    flex: 1,
   },
 
   scrollView: {
@@ -1261,8 +1327,7 @@ const styles = StyleSheet.create({
 
   decorativeCircle: {
     position: 'absolute',
-    backgroundColor:
-      'rgba(208, 0, 24, 0.05)',
+    backgroundColor: 'rgba(208,0,24,0.05)',
   },
 
   topCircle: {
@@ -1287,17 +1352,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#d00018',
     marginBottom: 18,
-    elevation: 12,
-
-    shadowColor: '#d00018',
-
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
+    elevation: 10,
   },
 
   logo: {
@@ -1306,15 +1361,15 @@ const styles = StyleSheet.create({
 
   brandTitle: {
     color: '#15171a',
-    fontWeight: '800',
+    fontWeight: '900',
     textAlign: 'center',
-    letterSpacing: -0.5,
   },
 
   brandSubtitle: {
-    maxWidth: 330,
+    maxWidth: 340,
     color: '#6b7280',
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 21,
     textAlign: 'center',
     marginTop: 8,
   },
@@ -1324,26 +1379,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderWidth: 1,
     borderColor: '#eeeeee',
-    elevation: 8,
-
-    shadowColor: '#111827',
-
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-
-    shadowOpacity: 0.09,
-    shadowRadius: 22,
+    elevation: 7,
   },
 
   cardHeader: {
-    marginBottom: 22,
+    marginBottom: 24,
   },
 
   cardTitle: {
     color: '#15171a',
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '900',
   },
 
   cardDescription: {
@@ -1351,6 +1397,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: 6,
+  },
+
+  sectionTitle: {
+    color: '#d00018',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    paddingBottom: 9,
+    marginTop: 8,
+    marginBottom: 15,
   },
 
   inputGroup: {
@@ -1377,12 +1436,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
 
+  multilineContainer: {
+    minHeight: 95,
+    alignItems: 'flex-start',
+    paddingTop: 8,
+  },
+
   inputIconContainer: {
     width: 34,
     height: 34,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 11,
     backgroundColor: '#ffffff',
     marginRight: 8,
   },
@@ -1402,8 +1467,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingHorizontal: 4,
     paddingVertical: 0,
-    includeFontPadding: false,
-    textAlignVertical: 'center',
+  },
+
+  multilineInput: {
+    minHeight: 78,
+    height: 78,
+    paddingTop: 8,
+    textAlignVertical: 'top',
   },
 
   visibilityButton: {
@@ -1420,31 +1490,114 @@ const styles = StyleSheet.create({
     tintColor: '#6b7280',
   },
 
+  helperText: {
+    color: '#8b929f',
+    fontSize: 11,
+    marginTop: -9,
+    marginBottom: 18,
+  },
+
+  uploadGroup: {
+    width: '100%',
+    marginBottom: 18,
+  },
+
+  uploadContainer: {
+    minHeight: 84,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fb',
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#d8dce3',
+    borderRadius: 17,
+    padding: 12,
+  },
+
+  uploadPressed: {
+    opacity: 0.72,
+    borderColor: '#d00018',
+  },
+
+  uploadDisabled: {
+    opacity: 0.6,
+  },
+
+  uploadPreviewContainer: {
+    width: 58,
+    height: 58,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#fff0f1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+
+  uploadPreviewCircular: {
+    borderRadius: 29,
+  },
+
+  uploadPreview: {
+    width: '100%',
+    height: '100%',
+  },
+
+  uploadPlaceholder: {
+    flex: 1,
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  uploadPlus: {
+    color: '#d00018',
+    fontSize: 30,
+  },
+
+  uploadTextArea: {
+    flex: 1,
+  },
+
+  uploadTitle: {
+    color: '#25282e',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  uploadDescription: {
+    color: '#858c99',
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+
+  changeImage: {
+    color: '#d00018',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+
+  uploadArrow: {
+    color: '#d00018',
+    fontSize: 25,
+    paddingHorizontal: 6,
+  },
+
   registerButton: {
     minHeight: 57,
+    backgroundColor: '#d00018',
+    borderRadius: 17,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#d00018',
-    borderRadius: 17,
-    paddingHorizontal: 18,
-    marginTop: 4,
-    elevation: 6,
-
-    shadowColor: '#d00018',
-
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-
-    shadowOpacity: 0.24,
-    shadowRadius: 10,
+    marginTop: 8,
+    elevation: 5,
   },
 
-  registerButtonPressed: {
-    opacity: 0.88,
-
+  buttonPressed: {
+    opacity: 0.85,
     transform: [
       {
         scale: 0.985,
@@ -1452,199 +1605,144 @@ const styles = StyleSheet.create({
     ],
   },
 
-  registerButtonDisabled: {
-    opacity: 0.72,
-  },
-
-  loadingButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    columnGap: 10,
+  buttonDisabled: {
+    opacity: 0.65,
   },
 
   registerButtonText: {
     color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '900',
   },
 
-  registerArrowContainer: {
+  buttonArrow: {
     position: 'absolute',
-    right: 12,
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-
-    backgroundColor:
-      'rgba(255,255,255,0.17)',
-  },
-
-  arrowImage: {
+    right: 18,
     width: 21,
     height: 21,
-    resizeMode: 'contain',
     tintColor: '#ffffff',
+    resizeMode: 'contain',
   },
 
   loginRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     marginTop: 22,
   },
 
   loginQuestion: {
     color: '#737985',
     fontSize: 14,
-  },
-
-  loginButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 5,
+    marginRight: 5,
   },
 
   loginText: {
     color: '#d00018',
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '900',
   },
 
-  footerText: {
-    maxWidth: 330,
+  footer: {
+    maxWidth: 350,
     color: '#959ba5',
     fontSize: 11,
     lineHeight: 17,
     textAlign: 'center',
     marginTop: 22,
-    zIndex: 1,
-  },
-
-  pressedOpacity: {
-    opacity: 0.65,
   },
 
   modalOverlay: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(17,24,39,0.70)',
     paddingHorizontal: 24,
-
-    backgroundColor:
-      'rgba(15, 23, 42, 0.68)',
   },
 
-  successModalCard: {
+  successCard: {
     width: '100%',
     maxWidth: 390,
-    alignItems: 'center',
     backgroundColor: '#ffffff',
     borderRadius: 28,
-    paddingHorizontal: 26,
-    paddingTop: 30,
-    paddingBottom: 24,
+    padding: 26,
+    alignItems: 'center',
     elevation: 20,
-
-    shadowColor: '#000000',
-
-    shadowOffset: {
-      width: 0,
-      height: 12,
-    },
-
-    shadowOpacity: 0.25,
-    shadowRadius: 25,
   },
 
-  successIconOuter: {
-    width: 96,
-    height: 96,
+  successOuter: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: '#e9f8ef',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 48,
-    backgroundColor:
-      'rgba(22, 163, 74, 0.12)',
-    marginBottom: 20,
   },
 
-  successIconInner: {
-    width: 70,
-    height: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 35,
+  successInner: {
+    width: 65,
+    height: 65,
+    borderRadius: 33,
     backgroundColor: '#16a34a',
-    elevation: 8,
-
-    shadowColor: '#16a34a',
-
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  successCheckmark: {
+  successCheck: {
     color: '#ffffff',
-    fontSize: 40,
-    fontWeight: '800',
-    lineHeight: 47,
+    fontSize: 36,
+    fontWeight: '900',
   },
 
-  successModalTitle: {
-    color: '#111827',
-    fontSize: 24,
-    fontWeight: '800',
+  successTitle: {
+    color: '#17191c',
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: 18,
     textAlign: 'center',
   },
 
-  successModalMessage: {
+  successMessage: {
     color: '#6b7280',
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 20,
     textAlign: 'center',
     marginTop: 10,
   },
 
-  redirectMessageContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 22,
+  pendingBadge: {
+    backgroundColor: '#fff4dc',
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    marginTop: 16,
   },
 
-  redirectMessage: {
+  pendingBadgeText: {
+    color: '#a06200',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+
+  redirectText: {
     color: '#d00018',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-    marginLeft: 9,
+    marginTop: 18,
   },
 
   progressTrack: {
     width: '100%',
     height: 6,
     backgroundColor: '#f1f5f9',
-    borderRadius: 999,
+    borderRadius: 10,
     overflow: 'hidden',
-    marginTop: 22,
+    marginTop: 15,
   },
 
   progressBar: {
     height: '100%',
     backgroundColor: '#16a34a',
-    borderRadius: 999,
-  },
-
-  popupDurationText: {
-    color: '#9ca3af',
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 10,
   },
 });

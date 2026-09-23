@@ -1,10 +1,12 @@
-import React, {useState} from 'react';
-import {SafeAreaView} from 'react-native-safe-area-context';
+import React, { useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -18,688 +20,510 @@ import {
 import axios from 'axios';
 
 const FORGOT_PASSWORD_API_URL =
-  'https://replete-software.com/projects/kp_admin/api/driver/forgot-password';
+  'https://replete-software.com/projects/kp_admin/api/driver/forget-password';
 
-const ForgotPasswordScreen = ({navigation}) => {
-  const {width, height} = useWindowDimensions();
+const ForgotPasswordScreen = ({ navigation }) => {
+  const { width, height } = useWindowDimensions();
 
   const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] =
-    useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const isSmallScreen = width <= 360;
   const isShortScreen = height <= 700;
 
-  const horizontalPadding =
-    isSmallScreen ? 18 : 24;
+  const horizontalPadding = isSmallScreen ? 18 : 24;
 
-  const cardWidth = Math.min(
-    width - horizontalPadding * 2,
-    460,
-  );
+  const cardWidth = Math.min(width - horizontalPadding * 2, 460);
 
   const validateEmail = emailValue => {
-    const emailPattern =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    return emailPattern.test(
-      emailValue.trim(),
-    );
+    return emailPattern.test(emailValue.trim());
   };
 
   /**
    * Convert Laravel validation errors
    * into a readable message.
    */
-  const extractValidationErrors =
-    errors => {
-      const messages = [];
+  const extractValidationErrors = errors => {
+    const messages = [];
 
-      if (
-        !errors ||
-        typeof errors !== 'object'
-      ) {
-        return messages;
-      }
-
-      Object.keys(errors).forEach(
-        fieldName => {
-          const fieldErrors =
-            errors[fieldName];
-
-          if (
-            Array.isArray(fieldErrors)
-          ) {
-            fieldErrors.forEach(
-              message => {
-                if (message) {
-                  messages.push(
-                    String(message),
-                  );
-                }
-              },
-            );
-          } else if (fieldErrors) {
-            messages.push(
-              String(fieldErrors),
-            );
-          }
-        },
-      );
-
+    if (!errors || typeof errors !== 'object') {
       return messages;
-    };
+    }
+
+    Object.keys(errors).forEach(fieldName => {
+      const fieldErrors = errors[fieldName];
+
+      if (Array.isArray(fieldErrors)) {
+        fieldErrors.forEach(message => {
+          if (message) {
+            messages.push(String(message));
+          }
+        });
+      } else if (fieldErrors) {
+        messages.push(String(fieldErrors));
+      }
+    });
+
+    return messages;
+  };
 
   /**
    * Return readable errors from Axios
    * and the Laravel API.
    */
-  const getForgotPasswordErrorMessage =
-    error => {
-      console.log(
-        '===== FORGOT PASSWORD ERROR =====',
-      );
+  const getForgotPasswordErrorMessage = error => {
+    console.log('===== FORGOT PASSWORD ERROR =====');
 
-      console.log(
-        'Message:',
-        error?.message,
-      );
+    console.log('Message:', error?.message);
 
-      console.log(
-        'Code:',
-        error?.code,
-      );
+    console.log('Code:', error?.code);
 
-      console.log(
-        'Status:',
-        error?.response?.status,
-      );
+    console.log('Status:', error?.response?.status);
 
-      console.log(
-        'Response:',
-        error?.response?.data,
-      );
+    console.log('Response:', error?.response?.data);
 
-      console.log(
-        'Request URL:',
-        error?.config?.url,
-      );
+    console.log('Request URL:', error?.config?.url);
 
-      console.log(
-        '=================================',
-      );
+    console.log('=================================');
 
-      if (error?.response) {
-        const responseData =
-          error.response.data;
+    if (error?.response) {
+      const responseData = error.response.data;
 
-        const validationMessages =
-          extractValidationErrors(
-            responseData?.errors,
-          );
+      const validationMessages = extractValidationErrors(responseData?.errors);
 
-        if (
-          validationMessages.length > 0
-        ) {
-          return validationMessages.join(
-            '\n',
-          );
-        }
+      if (validationMessages.length > 0) {
+        return validationMessages.join('\n');
+      }
 
-        if (
-          error.response.status === 404
-        ) {
-          return (
-            responseData?.message ||
-            'No driver account was found with this email address.'
-          );
-        }
-
-        if (
-          error.response.status === 422
-        ) {
-          return (
-            responseData?.message ||
-            'Please enter a valid registered email address.'
-          );
-        }
-
-        if (
-          error.response.status === 429
-        ) {
-          return (
-            responseData?.message ||
-            'Too many reset requests. Please wait before trying again.'
-          );
-        }
-
+      if (error.response.status === 404) {
         return (
           responseData?.message ||
-          responseData?.error ||
-          `The server returned error ${error.response.status}.`
+          'No driver account was found with this email address.'
         );
       }
 
-      if (
-        error?.code === 'ECONNABORTED'
-      ) {
-        return 'The request timed out. Please try again.';
+      if (error.response.status === 422) {
+        return (
+          responseData?.message ||
+          'Please enter a valid registered email address.'
+        );
       }
 
-      if (error?.request) {
+      if (error.response.status === 429) {
         return (
-          'The forgot-password server did not respond. ' +
-          'Please check your internet connection and try again.'
+          responseData?.message ||
+          'Too many reset requests. Please wait before trying again.'
         );
       }
 
       return (
-        error?.message ||
-        'An unexpected error occurred. Please try again.'
+        responseData?.message ||
+        responseData?.error ||
+        `The server returned error ${error.response.status}.`
       );
-    };
+    }
+
+    if (error?.code === 'ECONNABORTED') {
+      return 'The request timed out. Please try again.';
+    }
+
+    if (error?.request) {
+      return (
+        'The forgot-password server did not respond. ' +
+        'Please check your internet connection and try again.'
+      );
+    }
+
+    return error?.message || 'An unexpected error occurred. Please try again.';
+  };
 
   /**
    * Validate the email, call the API,
    * and redirect to OTPVerification
    * only after a successful response.
    */
-  const handleSendResetLink =
-    async () => {
-      if (isLoading) {
-        return;
-      }
+  const handleSendResetLink = async () => {
+    if (isLoading) {
+      return;
+    }
 
-      const cleanEmail = email
-        .trim()
-        .toLowerCase();
+    const cleanEmail = email.trim().toLowerCase();
 
-      if (!cleanEmail) {
-        Alert.alert(
-          'Email Required',
-          'Please enter your registered email address.',
-        );
+    if (!cleanEmail) {
+      Alert.alert(
+        'Email Required',
+        'Please enter your registered email address.',
+      );
 
-        return;
-      }
+      return;
+    }
 
-      if (
-        !validateEmail(cleanEmail)
-      ) {
-        Alert.alert(
-          'Invalid Email',
-          'Please enter a valid email address.',
-        );
+    if (!validateEmail(cleanEmail)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
 
-        return;
-      }
+      return;
+    }
 
-      const requestData = {
-        email: cleanEmail,
-      };
-
-      try {
-        setIsLoading(true);
-
-        console.log(
-          'Forgot password API:',
-          FORGOT_PASSWORD_API_URL,
-        );
-
-        console.log(
-          'Forgot password request:',
-          requestData,
-        );
-
-        const response =
-          await axios.post(
-            FORGOT_PASSWORD_API_URL,
-            requestData,
-            {
-              headers: {
-                Accept:
-                  'application/json',
-
-                'Content-Type':
-                  'application/json',
-              },
-
-              timeout: 20000,
-            },
-          );
-
-        console.log(
-          'Forgot password response:',
-          response.data,
-        );
-
-        const responseData =
-          response.data;
-
-        /**
-         * Some Laravel APIs return HTTP 200
-         * even when the request has failed.
-         */
-        if (
-          responseData?.status ===
-            false ||
-          responseData?.success ===
-            false
-        ) {
-          Alert.alert(
-            'Request Failed',
-
-            responseData?.message ||
-              'Unable to send the OTP. Please try again.',
-          );
-
-          return;
-        }
-
-        /**
-         * The API request succeeded.
-         * Redirect directly to OTP screen.
-         */
-        navigation.replace(
-          'Otp',
-          {
-            email: cleanEmail,
-
-            message:
-              responseData?.message ||
-              'OTP sent successfully.',
-
-            forgotPasswordData:
-              responseData?.data ||
-              null,
-          },
-        );
-      } catch (error) {
-        console.log(
-          'Forgot password API error:',
-          {
-            message:
-              error?.message,
-
-            code:
-              error?.code,
-
-            status:
-              error?.response
-                ?.status,
-
-            response:
-              error?.response
-                ?.data,
-
-            url:
-              error?.config?.url,
-          },
-        );
-
-        Alert.alert(
-          'Request Failed',
-          getForgotPasswordErrorMessage(
-            error,
-          ),
-        );
-      } finally {
-        setIsLoading(false);
-      }
+    const requestData = {
+      email: cleanEmail,
     };
 
+    try {
+      setIsLoading(true);
+
+      console.log('Forgot password API:', FORGOT_PASSWORD_API_URL);
+
+      console.log('Forgot password request:', requestData);
+
+      const response = await axios.post(FORGOT_PASSWORD_API_URL, requestData, {
+        headers: {
+          Accept: 'application/json',
+
+          'Content-Type': 'application/json',
+        },
+
+        timeout: 20000,
+      });
+
+      console.log('Forgot password response:', response.data);
+
+      const responseData = response.data;
+
+      /**
+       * Some Laravel APIs return HTTP 200
+       * even when the request has failed.
+       */
+      if (responseData?.status === false || responseData?.success === false) {
+        Alert.alert(
+          'Request Failed',
+
+          responseData?.message || 'Unable to send the OTP. Please try again.',
+        );
+
+        return;
+      }
+
+      /**
+       * API successful.
+       * Go to OTP page.
+       */
+      navigation.replace('Otp', {
+        email: cleanEmail,
+
+        message: responseData?.message || 'OTP sent successfully.',
+
+        forgotPasswordData: responseData?.data || null,
+      });
+    } catch (error) {
+      console.log('Forgot password API error:', {
+        message: error?.message,
+
+        code: error?.code,
+
+        status: error?.response?.status,
+
+        response: error?.response?.data,
+
+        url: error?.config?.url,
+      });
+
+      Alert.alert('Request Failed', getForgotPasswordErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <SafeAreaView
-      style={styles.safeArea}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#f8f9fb"
-      />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8f9fb" />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingHorizontal:
-              horizontalPadding,
+      {/* ==================================================
+          KEYBOARD AVOIDING VIEW
 
-            paddingTop:
-              isShortScreen
-                ? 20
-                : 42,
+          Keeps content available when
+          keyboard is visible.
+          ================================================== */}
 
-            paddingBottom: 34,
-          },
-        ]}
-        showsVerticalScrollIndicator={
-          false
-        }>
-        <View style={styles.page}>
-          {/* Decorative top circle */}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
+            {
+              paddingHorizontal: horizontalPadding,
 
-          <View
-            pointerEvents="none"
-            style={[
-              styles.decorativeCircle,
-              styles.topCircle,
-              {
-                width:
-                  width * 0.58,
+              paddingTop: isShortScreen ? 20 : 42,
 
-                height:
-                  width * 0.58,
+              /*
+               * Extra bottom space allows
+               * user to move the card and
+               * button above keyboard.
+               */
+              paddingBottom: 120,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          /*
+           * User can interact with controls
+           * while keyboard remains open.
+           */
+          keyboardShouldPersistTaps="handled"
+          /*
+           * Scrolling will NOT automatically
+           * close the keyboard.
+           */
+          keyboardDismissMode="none"
+          /*
+           * Keep manual scrolling enabled.
+           */
+          scrollEnabled={true}
+          /*
+           * Better scrolling support
+           * on Android.
+           */
+          nestedScrollEnabled={true}
+          bounces={false}
+          overScrollMode="never"
+        >
+          <View style={styles.page}>
+            {/* Decorative top circle */}
 
-                borderRadius:
-                  width * 0.29,
-              },
-            ]}
-          />
-
-          {/* Decorative bottom circle */}
-
-          <View
-            pointerEvents="none"
-            style={[
-              styles.decorativeCircle,
-              styles.bottomCircle,
-              {
-                width:
-                  width * 0.42,
-
-                height:
-                  width * 0.42,
-
-                borderRadius:
-                  width * 0.21,
-              },
-            ]}
-          />
-
-          {/* Brand section */}
-
-          <View
-            style={styles.brandSection}>
             <View
+              pointerEvents="none"
               style={[
-                styles.logoContainer,
+                styles.decorativeCircle,
+                styles.topCircle,
                 {
-                  width:
-                    isSmallScreen
-                      ? 74
-                      : 86,
+                  width: width * 0.58,
 
-                  height:
-                    isSmallScreen
-                      ? 74
-                      : 86,
+                  height: width * 0.58,
 
-                  borderRadius:
-                    isSmallScreen
-                      ? 23
-                      : 27,
+                  borderRadius: width * 0.29,
                 },
-              ]}>
-              <Image
-                source={require('../assets/delivery-bike-light.png')}
-                resizeMode="contain"
-                style={[
-                  styles.logo,
-                  {
-                    width:
-                      isSmallScreen
-                        ? 40
-                        : 48,
+              ]}
+            />
 
-                    height:
-                      isSmallScreen
-                        ? 40
-                        : 48,
+            {/* Decorative bottom circle */}
+
+            <View
+              pointerEvents="none"
+              style={[
+                styles.decorativeCircle,
+                styles.bottomCircle,
+                {
+                  width: width * 0.42,
+
+                  height: width * 0.42,
+
+                  borderRadius: width * 0.21,
+                },
+              ]}
+            />
+
+            {/* Brand section */}
+
+            <View style={styles.brandSection}>
+              <View
+                style={[
+                  styles.logoContainer,
+                  {
+                    width: isSmallScreen ? 74 : 86,
+
+                    height: isSmallScreen ? 74 : 86,
+
+                    borderRadius: isSmallScreen ? 23 : 27,
                   },
                 ]}
-              />
-            </View>
+              >
+                <Image
+                  source={require('../assets/delivery-bike-light.png')}
+                  resizeMode="contain"
+                  style={[
+                    styles.logo,
+                    {
+                      width: isSmallScreen ? 40 : 48,
 
-            <Text
-              style={[
-                styles.brandTitle,
-                {
-                  fontSize:
-                    isSmallScreen
-                      ? 27
-                      : 32,
-                },
-              ]}>
-              Forgot Password?
-            </Text>
+                      height: isSmallScreen ? 40 : 48,
+                    },
+                  ]}
+                />
+              </View>
 
-            <Text
-              style={[
-                styles.brandSubtitle,
-                {
-                  fontSize:
-                    isSmallScreen
-                      ? 14
-                      : 15,
-                },
-              ]}>
-              Enter your registered
-              email address and we will
-              send you a password reset
-              OTP.
-            </Text>
-          </View>
-
-          {/* Forgot password card */}
-
-          <View
-            style={[
-              styles.forgotCard,
-              {
-                width: cardWidth,
-
-                padding:
-                  isSmallScreen
-                    ? 18
-                    : 24,
-
-                borderRadius:
-                  isSmallScreen
-                    ? 24
-                    : 28,
-              },
-            ]}>
-            <View
-              style={styles.cardHeader}>
               <Text
                 style={[
-                  styles.cardTitle,
+                  styles.brandTitle,
                   {
-                    fontSize:
-                      isSmallScreen
-                        ? 22
-                        : 25,
+                    fontSize: isSmallScreen ? 27 : 32,
                   },
-                ]}>
-                Reset Password
+                ]}
+              >
+                Forgot Password?
               </Text>
 
               <Text
-                style={
-                  styles.cardDescription
-                }>
-                We will send a verification
-                OTP to your registered
-                email address.
+                style={[
+                  styles.brandSubtitle,
+                  {
+                    fontSize: isSmallScreen ? 14 : 15,
+                  },
+                ]}
+              >
+                Enter your registered email address and we will send you a
+                password reset OTP.
               </Text>
             </View>
 
-            {/* Information box */}
+            {/* Forgot password card */}
 
             <View
-              style={styles.infoBox}>
-              <View
-                style={
-                  styles.infoIconContainer
-                }>
-                <Image
-                  source={require('../assets/mail.png')}
-                  style={
-                    styles.infoIcon
-                  }
-                />
+              style={[
+                styles.forgotCard,
+                {
+                  width: cardWidth,
+
+                  padding: isSmallScreen ? 18 : 24,
+
+                  borderRadius: isSmallScreen ? 24 : 28,
+                },
+              ]}
+            >
+              <View style={styles.cardHeader}>
+                <Text
+                  style={[
+                    styles.cardTitle,
+                    {
+                      fontSize: isSmallScreen ? 22 : 25,
+                    },
+                  ]}
+                >
+                  Reset Password
+                </Text>
+
+                <Text style={styles.cardDescription}>
+                  We will send a verification OTP to your registered email
+                  address.
+                </Text>
               </View>
 
-              <Text
-                style={styles.infoText}>
-                Make sure you can access
-                the email address associated
-                with your driver account.
-              </Text>
-            </View>
+              {/* Information box */}
 
-            {/* Email input */}
-
-            <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Email Address
-              </Text>
-
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
+              <View style={styles.infoBox}>
+                <View style={styles.infoIconContainer}>
                   <Image
                     source={require('../assets/mail.png')}
-                    style={
-                      styles.inputImage
-                    }
+                    style={styles.infoIcon}
                   />
                 </View>
 
-                <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="example@email.com"
-                  placeholderTextColor="#9ca3af"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  editable={!isLoading}
-                  style={
-                    styles.textInput
-                  }
-                />
+                <Text style={styles.infoText}>
+                  Make sure you can access the email address associated with
+                  your driver account.
+                </Text>
+              </View>
+
+              {/* Email input */}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Email Address</Text>
+
+                <View style={styles.inputContainer}>
+                  <View pointerEvents="none" style={styles.inputIconContainer}>
+                    <Image
+                      source={require('../assets/mail.png')}
+                      style={styles.inputImage}
+                    />
+                  </View>
+
+                  <TextInput
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="example@email.com"
+                    placeholderTextColor="#9ca3af"
+                    /*
+                     * Show proper email keyboard.
+                     */
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    /*
+                     * User can press Done
+                     * to send OTP.
+                     */
+                    returnKeyType="done"
+                    onSubmitEditing={handleSendResetLink}
+                    editable={!isLoading}
+                    style={styles.textInput}
+                  />
+                </View>
+              </View>
+
+              {/* Send OTP button */}
+
+              <Pressable
+                onPress={handleSendResetLink}
+                disabled={isLoading}
+                style={({ pressed }) => [
+                  styles.resetButton,
+
+                  pressed && !isLoading && styles.resetButtonPressed,
+
+                  isLoading && styles.resetButtonDisabled,
+                ]}
+              >
+                {isLoading ? (
+                  <View style={styles.loadingContent}>
+                    <ActivityIndicator size="small" color="#ffffff" />
+
+                    <Text style={styles.loadingText}>Sending OTP...</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.resetButtonText}>Send OTP</Text>
+
+                    <View
+                      pointerEvents="none"
+                      style={styles.resetArrowContainer}
+                    >
+                      <Image
+                        source={require('../assets/right-arrow.png')}
+                        style={styles.arrowImage}
+                      />
+                    </View>
+                  </>
+                )}
+              </Pressable>
+
+              {/* Back to Login */}
+
+              <View style={styles.backRow}>
+                <Text style={styles.backQuestion}>Remember your password?</Text>
+
+                <Pressable
+                  disabled={isLoading}
+                  onPress={() => navigation.navigate('Login')}
+                  style={({ pressed }) => [
+                    styles.backButton,
+
+                    pressed && styles.pressedOpacity,
+                  ]}
+                >
+                  <Text style={styles.backText}>Back to Login</Text>
+                </Pressable>
               </View>
             </View>
 
-            {/* Send OTP button */}
-
-            <Pressable
-              onPress={
-                handleSendResetLink
-              }
-              disabled={isLoading}
-              style={({pressed}) => [
-                styles.resetButton,
-
-                pressed &&
-                  !isLoading &&
-                  styles.resetButtonPressed,
-
-                isLoading &&
-                  styles.resetButtonDisabled,
-              ]}>
-              {isLoading ? (
-                <View
-                  style={
-                    styles.loadingContent
-                  }>
-                  <ActivityIndicator
-                    size="small"
-                    color="#ffffff"
-                  />
-
-                  <Text
-                    style={
-                      styles.loadingText
-                    }>
-                    Sending OTP...
-                  </Text>
-                </View>
-              ) : (
-                <>
-                  <Text
-                    style={
-                      styles.resetButtonText
-                    }>
-                    Send OTP
-                  </Text>
-
-                  <View
-                    pointerEvents="none"
-                    style={
-                      styles.resetArrowContainer
-                    }>
-                    <Image
-                      source={require('../assets/right-arrow.png')}
-                      style={
-                        styles.arrowImage
-                      }
-                    />
-                  </View>
-                </>
-              )}
-            </Pressable>
-
-            {/* Back to Login */}
-
-            <View
-              style={styles.backRow}>
-              <Text
-                style={
-                  styles.backQuestion
-                }>
-                Remember your password?
-              </Text>
-
-              <Pressable
-                disabled={isLoading}
-                onPress={() =>
-                  navigation.navigate(
-                    'Login',
-                  )
-                }
-                style={({pressed}) => [
-                  styles.backButton,
-
-                  pressed &&
-                    styles.pressedOpacity,
-                ]}>
-                <Text
-                  style={
-                    styles.backText
-                  }>
-                  Back to Login
-                </Text>
-              </Pressable>
-            </View>
+            <Text style={styles.footerText}>
+              For security reasons, the OTP may expire after a limited time.
+            </Text>
           </View>
-
-          <Text
-            style={styles.footerText}>
-            For security reasons, the OTP
-            may expire after a limited
-            time.
-          </Text>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -710,6 +534,15 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#f8f9fb',
+  },
+
+  /*
+   * IMPORTANT:
+   * Allows keyboard handler to use
+   * the complete screen.
+   */
+  keyboardAvoidingView: {
+    flex: 1,
   },
 
   scrollView: {
@@ -730,8 +563,7 @@ const styles = StyleSheet.create({
   decorativeCircle: {
     position: 'absolute',
 
-    backgroundColor:
-      'rgba(208, 0, 24, 0.05)',
+    backgroundColor: 'rgba(208, 0, 24, 0.05)',
   },
 
   topCircle: {
@@ -828,13 +660,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
 
-    backgroundColor:
-      'rgba(208, 0, 24, 0.055)',
+    backgroundColor: 'rgba(208, 0, 24, 0.055)',
 
     borderWidth: 1,
 
-    borderColor:
-      'rgba(208, 0, 24, 0.12)',
+    borderColor: 'rgba(208, 0, 24, 0.12)',
 
     borderRadius: 15,
     paddingHorizontal: 13,
@@ -982,8 +812,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 12,
 
-    backgroundColor:
-      'rgba(255,255,255,0.17)',
+    backgroundColor: 'rgba(255,255,255,0.17)',
   },
 
   arrowImage: {

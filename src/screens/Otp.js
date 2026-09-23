@@ -1,9 +1,11 @@
-import React, {useState} from 'react';
+import React, { useState } from 'react';
 
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -14,34 +16,29 @@ import {
   View,
 } from 'react-native';
 
-import {SafeAreaView} from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 
 const VERIFY_OTP_API_URL =
-  'https://replete-software.com/projects/kp_admin/api/driver/verify-forgot-password-otp';
+  'https://replete-software.com/projects/kp_admin/api/driver/verify-otp';
 
 const OTP_LENGTH = 6;
 
-const OTP = ({navigation, route}) => {
-  const {width, height} = useWindowDimensions();
+const OTP = ({ navigation, route }) => {
+  const { width, height } = useWindowDimensions();
 
-  const email =
-    route?.params?.email?.trim()?.toLowerCase() || '';
+  const email = route?.params?.email?.trim()?.toLowerCase() || '';
 
   const [otp, setOtp] = useState('');
-  const [isLoading, setIsLoading] =
-    useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const isSmallScreen = width <= 360;
+
   const isShortScreen = height <= 700;
 
-  const horizontalPadding =
-    isSmallScreen ? 18 : 24;
+  const horizontalPadding = isSmallScreen ? 18 : 24;
 
-  const cardWidth = Math.min(
-    width - horizontalPadding * 2,
-    460,
-  );
+  const cardWidth = Math.min(width - horizontalPadding * 2, 460);
 
   /**
    * Hide part of the email address.
@@ -58,6 +55,7 @@ const OTP = ({navigation, route}) => {
     }
 
     const username = parts[0];
+
     const domain = parts[1];
 
     if (username.length <= 1) {
@@ -75,144 +73,83 @@ const OTP = ({navigation, route}) => {
    * Allow only numeric OTP characters.
    */
   const handleOtpChange = value => {
-    const numbersOnly = String(value).replace(
-      /[^0-9]/g,
-      '',
-    );
+    const numbersOnly = String(value).replace(/[^0-9]/g, '');
 
-    setOtp(
-      numbersOnly.slice(0, OTP_LENGTH),
-    );
+    setOtp(numbersOnly.slice(0, OTP_LENGTH));
   };
 
   /**
    * Convert Laravel validation errors into
    * a readable message without Array.flat().
    */
-  const extractValidationErrors =
-    errors => {
-      const messages = [];
+  const extractValidationErrors = errors => {
+    const messages = [];
 
-      if (
-        !errors ||
-        typeof errors !== 'object'
-      ) {
-        return messages;
-      }
-
-      Object.keys(errors).forEach(
-        fieldName => {
-          const fieldErrors =
-            errors[fieldName];
-
-          if (
-            Array.isArray(fieldErrors)
-          ) {
-            fieldErrors.forEach(
-              message => {
-                if (message) {
-                  messages.push(
-                    String(message),
-                  );
-                }
-              },
-            );
-          } else if (fieldErrors) {
-            messages.push(
-              String(fieldErrors),
-            );
-          }
-        },
-      );
-
+    if (!errors || typeof errors !== 'object') {
       return messages;
-    };
+    }
+
+    Object.keys(errors).forEach(fieldName => {
+      const fieldErrors = errors[fieldName];
+
+      if (Array.isArray(fieldErrors)) {
+        fieldErrors.forEach(message => {
+          if (message) {
+            messages.push(String(message));
+          }
+        });
+      } else if (fieldErrors) {
+        messages.push(String(fieldErrors));
+      }
+    });
+
+    return messages;
+  };
 
   /**
    * Convert Axios and Laravel errors into
    * a readable message.
    */
   const getOtpErrorMessage = error => {
-    console.log(
-      '========== VERIFY OTP ERROR ==========',
-    );
+    console.log('========== VERIFY OTP ERROR ==========');
 
-    console.log(
-      'Message:',
-      error?.message,
-    );
+    console.log('Message:', error?.message);
 
-    console.log(
-      'Code:',
-      error?.code,
-    );
+    console.log('Code:', error?.code);
 
-    console.log(
-      'Status:',
-      error?.response?.status,
-    );
+    console.log('Status:', error?.response?.status);
 
-    console.log(
-      'Response:',
-      error?.response?.data,
-    );
+    console.log('Response:', error?.response?.data);
 
-    console.log(
-      'Request URL:',
-      error?.config?.url,
-    );
+    console.log('Request URL:', error?.config?.url);
 
-    console.log(
-      '======================================',
-    );
+    console.log('======================================');
 
     if (error?.response) {
-      const responseData =
-        error.response.data;
+      const responseData = error.response.data;
 
-      const validationMessages =
-        extractValidationErrors(
-          responseData?.errors,
-        );
+      const validationMessages = extractValidationErrors(responseData?.errors);
 
-      if (
-        validationMessages.length > 0
-      ) {
-        return validationMessages.join(
-          '\n',
-        );
+      if (validationMessages.length > 0) {
+        return validationMessages.join('\n');
       }
 
-      if (
-        error.response.status === 400
-      ) {
-        return (
-          responseData?.message ||
-          'The OTP is invalid or has expired.'
-        );
+      if (error.response.status === 400) {
+        return responseData?.message || 'The OTP is invalid or has expired.';
       }
 
-      if (
-        error.response.status === 404
-      ) {
+      if (error.response.status === 404) {
         return (
           responseData?.message ||
           'No password reset request was found for this email address.'
         );
       }
 
-      if (
-        error.response.status === 422
-      ) {
-        return (
-          responseData?.message ||
-          'Please enter a valid six-digit OTP.'
-        );
+      if (error.response.status === 422) {
+        return responseData?.message || 'Please enter a valid six-digit OTP.';
       }
 
-      if (
-        error.response.status === 429
-      ) {
+      if (error.response.status === 429) {
         return (
           responseData?.message ||
           'Too many verification attempts. Please wait and try again.'
@@ -226,9 +163,7 @@ const OTP = ({navigation, route}) => {
       );
     }
 
-    if (
-      error?.code === 'ECONNABORTED'
-    ) {
+    if (error?.code === 'ECONNABORTED') {
       return 'The OTP verification request timed out. Please try again.';
     }
 
@@ -240,8 +175,7 @@ const OTP = ({navigation, route}) => {
     }
 
     return (
-      error?.message ||
-      'An unexpected error occurred while verifying the OTP.'
+      error?.message || 'An unexpected error occurred while verifying the OTP.'
     );
   };
 
@@ -262,6 +196,7 @@ const OTP = ({navigation, route}) => {
         [
           {
             text: 'Go Back',
+
             onPress: () => {
               navigation.goBack();
             },
@@ -281,9 +216,7 @@ const OTP = ({navigation, route}) => {
       return;
     }
 
-    if (
-      cleanOtp.length !== OTP_LENGTH
-    ) {
+    if (cleanOtp.length !== OTP_LENGTH) {
       Alert.alert(
         'Invalid OTP',
         `Please enter the complete ${OTP_LENGTH}-digit OTP.`,
@@ -293,10 +226,7 @@ const OTP = ({navigation, route}) => {
     }
 
     if (!/^\d{6}$/.test(cleanOtp)) {
-      Alert.alert(
-        'Invalid OTP',
-        'The OTP must contain only numbers.',
-      );
+      Alert.alert('Invalid OTP', 'The OTP must contain only numbers.');
 
       return;
     }
@@ -309,50 +239,39 @@ const OTP = ({navigation, route}) => {
     try {
       setIsLoading(true);
 
-      console.log(
-        'Verify OTP API:',
-        VERIFY_OTP_API_URL,
-      );
+      console.log('Verify OTP API:', VERIFY_OTP_API_URL);
 
-      console.log(
-        'Verify OTP request:',
-        requestData,
-      );
+      console.log('Verify OTP request:', requestData);
 
       const response = await axios.post(
         VERIFY_OTP_API_URL,
+
         requestData,
+
         {
           headers: {
             Accept: 'application/json',
-            'Content-Type':
-              'application/json',
+
+            'Content-Type': 'application/json',
           },
 
           timeout: 20000,
         },
       );
 
-      console.log(
-        'Complete verify OTP response:',
-        response.data,
-      );
+      console.log('Complete verify OTP response:', response.data);
 
-      const responseData =
-        response.data;
+      const responseData = response.data;
 
       /**
        * Some APIs return HTTP 200 while
        * success or status is false.
        */
-      if (
-        responseData?.status === false ||
-        responseData?.success === false
-      ) {
+      if (responseData?.status === false || responseData?.success === false) {
         Alert.alert(
           'Verification Failed',
-          responseData?.message ||
-            'The OTP is invalid or has expired.',
+
+          responseData?.message || 'The OTP is invalid or has expired.',
         );
 
         return;
@@ -375,39 +294,31 @@ const OTP = ({navigation, route}) => {
        * OTP verified successfully.
        * Replace the OTP screen with ResetPassword.
        */
-      navigation.replace(
-        'ResetPassword',
-        {
-          email,
-          otp: cleanOtp,
-          resetToken,
+      navigation.replace('ResetPassword', {
+        email,
 
-          verifyOtpMessage:
-            responseData?.message ||
-            'OTP verified successfully.',
+        otp: cleanOtp,
 
-          verifyOtpData:
-            responseData?.data || null,
-        },
-      );
+        resetToken,
+
+        verifyOtpMessage: responseData?.message || 'OTP verified successfully.',
+
+        verifyOtpData: responseData?.data || null,
+      });
     } catch (error) {
-      console.log(
-        'Verify OTP API error:',
-        {
-          message: error?.message,
-          code: error?.code,
-          status:
-            error?.response?.status,
-          response:
-            error?.response?.data,
-          url: error?.config?.url,
-        },
-      );
+      console.log('Verify OTP API error:', {
+        message: error?.message,
 
-      Alert.alert(
-        'Verification Failed',
-        getOtpErrorMessage(error),
-      );
+        code: error?.code,
+
+        status: error?.response?.status,
+
+        response: error?.response?.data,
+
+        url: error?.config?.url,
+      });
+
+      Alert.alert('Verification Failed', getOtpErrorMessage(error));
     } finally {
       setIsLoading(false);
     }
@@ -421,359 +332,328 @@ const OTP = ({navigation, route}) => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#f8f9fb"
-      />
+      <StatusBar barStyle="dark-content" backgroundColor="#f8f9fb" />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingHorizontal:
-              horizontalPadding,
+      {/* ==================================================
+          KEYBOARD AVOIDING VIEW
 
-            paddingTop:
-              isShortScreen
-                ? 20
-                : 42,
+          This keeps the OTP input and
+          buttons accessible when the
+          keyboard is open.
+          ================================================== */}
 
-            paddingBottom: 34,
-          },
-        ]}
-        showsVerticalScrollIndicator={
-          false
-        }>
-        <View style={styles.page}>
-          {/* Decorative circles */}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
 
-          <View
-            pointerEvents="none"
-            style={[
-              styles.decorativeCircle,
-              styles.topCircle,
-              {
-                width:
-                  width * 0.58,
+            {
+              paddingHorizontal: horizontalPadding,
 
-                height:
-                  width * 0.58,
+              paddingTop: isShortScreen ? 20 : 42,
 
-                borderRadius:
-                  width * 0.29,
-              },
-            ]}
-          />
+              /*
+               * Gives enough room to
+               * scroll OTP/card/button
+               * above the keyboard.
+               */
+              paddingBottom: 120,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          /*
+           * Inputs and buttons remain
+           * interactive while keyboard
+           * is open.
+           */
+          keyboardShouldPersistTaps="handled"
+          /*
+           * User can scroll without
+           * automatically closing keyboard.
+           */
+          keyboardDismissMode="none"
+          /*
+           * Explicitly keep scrolling
+           * available while typing.
+           */
+          scrollEnabled={true}
+          /*
+           * Helps scrolling behaviour
+           * on Android.
+           */
+          nestedScrollEnabled={true}
+          bounces={false}
+          overScrollMode="never"
+        >
+          <View style={styles.page}>
+            {/* Decorative circles */}
 
-          <View
-            pointerEvents="none"
-            style={[
-              styles.decorativeCircle,
-              styles.bottomCircle,
-              {
-                width:
-                  width * 0.42,
-
-                height:
-                  width * 0.42,
-
-                borderRadius:
-                  width * 0.21,
-              },
-            ]}
-          />
-
-          {/* Brand section */}
-
-          <View
-            style={styles.brandSection}>
             <View
+              pointerEvents="none"
               style={[
-                styles.logoContainer,
+                styles.decorativeCircle,
+                styles.topCircle,
+
                 {
-                  width:
-                    isSmallScreen
-                      ? 74
-                      : 86,
+                  width: width * 0.58,
 
-                  height:
-                    isSmallScreen
-                      ? 74
-                      : 86,
+                  height: width * 0.58,
 
-                  borderRadius:
-                    isSmallScreen
-                      ? 23
-                      : 27,
+                  borderRadius: width * 0.29,
                 },
-              ]}>
-              <Image
-                source={require('../assets/delivery-bike-light.png')}
-                resizeMode="contain"
-                style={[
-                  styles.logo,
-                  {
-                    width:
-                      isSmallScreen
-                        ? 40
-                        : 48,
+              ]}
+            />
 
-                    height:
-                      isSmallScreen
-                        ? 40
-                        : 48,
+            <View
+              pointerEvents="none"
+              style={[
+                styles.decorativeCircle,
+                styles.bottomCircle,
+
+                {
+                  width: width * 0.42,
+
+                  height: width * 0.42,
+
+                  borderRadius: width * 0.21,
+                },
+              ]}
+            />
+
+            {/* Brand section */}
+
+            <View style={styles.brandSection}>
+              <View
+                style={[
+                  styles.logoContainer,
+
+                  {
+                    width: isSmallScreen ? 74 : 86,
+
+                    height: isSmallScreen ? 74 : 86,
+
+                    borderRadius: isSmallScreen ? 23 : 27,
                   },
                 ]}
-              />
-            </View>
+              >
+                <Image
+                  source={require('../assets/delivery-bike-light.png')}
+                  resizeMode="contain"
+                  style={[
+                    styles.logo,
 
-            <Text
-              style={[
-                styles.brandTitle,
-                {
-                  fontSize:
-                    isSmallScreen
-                      ? 27
-                      : 32,
-                },
-              ]}>
-              Verify OTP
-            </Text>
+                    {
+                      width: isSmallScreen ? 40 : 48,
 
-            <Text
-              style={[
-                styles.brandSubtitle,
-                {
-                  fontSize:
-                    isSmallScreen
-                      ? 14
-                      : 15,
-                },
-              ]}>
-              Enter the verification code
-              sent to your registered email
-              address.
-            </Text>
-          </View>
+                      height: isSmallScreen ? 40 : 48,
+                    },
+                  ]}
+                />
+              </View>
 
-          {/* OTP card */}
-
-          <View
-            style={[
-              styles.otpCard,
-              {
-                width: cardWidth,
-
-                padding:
-                  isSmallScreen
-                    ? 18
-                    : 24,
-
-                borderRadius:
-                  isSmallScreen
-                    ? 24
-                    : 28,
-              },
-            ]}>
-            <View
-              style={styles.cardHeader}>
               <Text
                 style={[
-                  styles.cardTitle,
+                  styles.brandTitle,
+
                   {
-                    fontSize:
-                      isSmallScreen
-                        ? 22
-                        : 25,
+                    fontSize: isSmallScreen ? 27 : 32,
                   },
-                ]}>
-                Enter Verification Code
+                ]}
+              >
+                Verify OTP
               </Text>
 
               <Text
-                style={
-                  styles.cardDescription
-                }>
-                We sent a six-digit OTP
-                to:
-              </Text>
+                style={[
+                  styles.brandSubtitle,
 
-              <Text
-                style={styles.emailText}>
-                {maskEmail(email)}
+                  {
+                    fontSize: isSmallScreen ? 14 : 15,
+                  },
+                ]}
+              >
+                Enter the verification code sent to your registered email
+                address.
               </Text>
             </View>
 
-            {/* OTP information */}
+            {/* OTP card */}
 
             <View
-              style={styles.infoBox}>
-              <View
-                style={
-                  styles.infoIconContainer
-                }>
-                <Image
-                  source={require('../assets/mail.png')}
-                  style={styles.infoIcon}
-                />
+              style={[
+                styles.otpCard,
+
+                {
+                  width: cardWidth,
+
+                  padding: isSmallScreen ? 18 : 24,
+
+                  borderRadius: isSmallScreen ? 24 : 28,
+                },
+              ]}
+            >
+              <View style={styles.cardHeader}>
+                <Text
+                  style={[
+                    styles.cardTitle,
+
+                    {
+                      fontSize: isSmallScreen ? 22 : 25,
+                    },
+                  ]}
+                >
+                  Enter Verification Code
+                </Text>
+
+                <Text style={styles.cardDescription}>
+                  We sent a six-digit OTP to:
+                </Text>
+
+                <Text style={styles.emailText}>{maskEmail(email)}</Text>
               </View>
 
-              <Text
-                style={styles.infoText}>
-                Check your inbox and enter
-                the OTP before it expires.
-              </Text>
-            </View>
+              {/* OTP information */}
 
-            {/* OTP input */}
-
-            <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Six-Digit OTP
-              </Text>
-
-              <View
-                style={
-                  styles.otpInputContainer
-                }>
-                <TextInput
-                  value={otp}
-                  onChangeText={
-                    handleOtpChange
-                  }
-                  placeholder="000000"
-                  placeholderTextColor="#b8bdc6"
-                  keyboardType="number-pad"
-                  maxLength={OTP_LENGTH}
-                  editable={!isLoading}
-                  selectionColor="#d00018"
-                  style={styles.otpInput}
-                />
-              </View>
-
-              <View
-                style={styles.otpProgress}>
-                {Array.from({
-                  length: OTP_LENGTH,
-                }).map((_, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.otpProgressDot,
-
-                      index < otp.length &&
-                        styles.otpProgressDotActive,
-                    ]}
+              <View style={styles.infoBox}>
+                <View style={styles.infoIconContainer}>
+                  <Image
+                    source={require('../assets/mail.png')}
+                    style={styles.infoIcon}
                   />
-                ))}
-              </View>
-            </View>
-
-            {/* Verify button */}
-
-            <Pressable
-              onPress={handleVerifyOtp}
-              disabled={isLoading}
-              style={({pressed}) => [
-                styles.verifyButton,
-
-                pressed &&
-                  !isLoading &&
-                  styles.verifyButtonPressed,
-
-                isLoading &&
-                  styles.verifyButtonDisabled,
-              ]}>
-              {isLoading ? (
-                <View
-                  style={
-                    styles.loadingContent
-                  }>
-                  <ActivityIndicator
-                    size="small"
-                    color="#ffffff"
-                  />
-
-                  <Text
-                    style={
-                      styles.loadingText
-                    }>
-                    Verifying...
-                  </Text>
                 </View>
-              ) : (
-                <>
-                  <Text
-                    style={
-                      styles.verifyButtonText
-                    }>
-                    Verify OTP
-                  </Text>
 
-                  <View
-                    pointerEvents="none"
-                    style={
-                      styles.arrowContainer
-                    }>
-                    <Image
-                      source={require('../assets/right-arrow.png')}
-                      style={
-                        styles.arrowImage
-                      }
+                <Text style={styles.infoText}>
+                  Check your inbox and enter the OTP before it expires.
+                </Text>
+              </View>
+
+              {/* OTP input */}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Six-Digit OTP</Text>
+
+                <View style={styles.otpInputContainer}>
+                  <TextInput
+                    value={otp}
+                    onChangeText={handleOtpChange}
+                    placeholder="000000"
+                    placeholderTextColor="#b8bdc6"
+                    keyboardType="number-pad"
+                    maxLength={OTP_LENGTH}
+                    editable={!isLoading}
+                    selectionColor="#d00018"
+                    /*
+                     * Allows keyboard action
+                     * to verify where supported.
+                     */
+                    returnKeyType="done"
+                    onSubmitEditing={handleVerifyOtp}
+                    style={styles.otpInput}
+                  />
+                </View>
+
+                <View style={styles.otpProgress}>
+                  {Array.from({
+                    length: OTP_LENGTH,
+                  }).map((_, index) => (
+                    <View
+                      key={index}
+                      style={[
+                        styles.otpProgressDot,
+
+                        index < otp.length && styles.otpProgressDotActive,
+                      ]}
                     />
-                  </View>
-                </>
-              )}
-            </Pressable>
+                  ))}
+                </View>
+              </View>
 
-            {/* Change email */}
-
-            <View style={styles.backRow}>
-              <Text
-                style={
-                  styles.backQuestion
-                }>
-                Wrong email address?
-              </Text>
+              {/* Verify button */}
 
               <Pressable
+                onPress={handleVerifyOtp}
                 disabled={isLoading}
-                onPress={handleChangeEmail}
-                style={({pressed}) => [
-                  styles.backButton,
+                style={({ pressed }) => [
+                  styles.verifyButton,
 
-                  pressed &&
-                    !isLoading &&
-                    styles.pressedOpacity,
-                ]}>
-                <Text
-                  style={styles.backText}>
-                  Change Email
-                </Text>
+                  pressed && !isLoading && styles.verifyButtonPressed,
+
+                  isLoading && styles.verifyButtonDisabled,
+                ]}
+              >
+                {isLoading ? (
+                  <View style={styles.loadingContent}>
+                    <ActivityIndicator size="small" color="#ffffff" />
+
+                    <Text style={styles.loadingText}>Verifying...</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.verifyButtonText}>Verify OTP</Text>
+
+                    <View pointerEvents="none" style={styles.arrowContainer}>
+                      <Image
+                        source={require('../assets/right-arrow.png')}
+                        style={styles.arrowImage}
+                      />
+                    </View>
+                  </>
+                )}
               </Pressable>
-            </View>
-          </View>
 
-          <Text
-            style={styles.footerText}>
-            Never share your OTP with
-            anyone.
-          </Text>
-        </View>
-      </ScrollView>
+              {/* Change email */}
+
+              <View style={styles.backRow}>
+                <Text style={styles.backQuestion}>Wrong email address?</Text>
+
+                <Pressable
+                  disabled={isLoading}
+                  onPress={handleChangeEmail}
+                  style={({ pressed }) => [
+                    styles.backButton,
+
+                    pressed && !isLoading && styles.pressedOpacity,
+                  ]}
+                >
+                  <Text style={styles.backText}>Change Email</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <Text style={styles.footerText}>
+              Never share your OTP with anyone.
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 export default OTP;
 
+/* =========================================================
+ * STYLES
+ * ========================================================= */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#f8f9fb',
+  },
+
+  /*
+   * IMPORTANT
+   * Gives KeyboardAvoidingView
+   * the full available screen.
+   */
+  keyboardAvoidingView: {
+    flex: 1,
   },
 
   scrollView: {
@@ -793,8 +673,8 @@ const styles = StyleSheet.create({
 
   decorativeCircle: {
     position: 'absolute',
-    backgroundColor:
-      'rgba(208, 0, 24, 0.05)',
+
+    backgroundColor: 'rgba(208, 0, 24, 0.05)',
   },
 
   topCircle: {
@@ -899,13 +779,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
 
-    backgroundColor:
-      'rgba(208, 0, 24, 0.055)',
+    backgroundColor: 'rgba(208, 0, 24, 0.055)',
 
     borderWidth: 1,
 
-    borderColor:
-      'rgba(208, 0, 24, 0.12)',
+    borderColor: 'rgba(208, 0, 24, 0.12)',
 
     borderRadius: 15,
     paddingHorizontal: 13,
@@ -1044,8 +922,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 12,
 
-    backgroundColor:
-      'rgba(255,255,255,0.17)',
+    backgroundColor: 'rgba(255,255,255,0.17)',
   },
 
   arrowImage: {

@@ -1,8 +1,9 @@
-import React, {useEffect, useState} from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -15,70 +16,257 @@ import {
   View,
 } from 'react-native';
 
-import {SafeAreaView} from 'react-native-safe-area-context';
+import { CommonActions } from '@react-navigation/native';
+
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import axios from 'axios';
+
+/* =========================================================
+ * API
+ * ========================================================= */
 
 const LOGIN_API_URL =
   'https://replete-software.com/projects/kp_admin/api/driver/login';
 
-const AUTH_TOKEN_KEY = '@kp_kitchen_driver_token';
-const AUTH_USER_KEY = '@kp_kitchen_driver_user';
-const AUTH_EMAIL_KEY = '@kp_kitchen_driver_email';
+/* =========================================================
+ * STORAGE KEYS
+ * ========================================================= */
+
+export const AUTH_TOKEN_KEY = '@kp_kitchen_driver_token';
+
+export const AUTH_USER_KEY = '@kp_kitchen_driver_user';
+
+export const AUTH_EMAIL_KEY = '@kp_kitchen_driver_email';
+
+export const AUTH_LOGOUT_FLAG_KEY = '@kp_kitchen_driver_logged_out';
+
+/* =========================================================
+ * LOADING
+ * ========================================================= */
 
 const MINIMUM_LOADING_TIME = 1500;
 
-/**
- * Keep the loader visible for a minimum duration.
- */
-const waitForMinimumLoadingTime = async startedAt => {
-  const elapsedTime = Date.now() - startedAt;
+/* =========================================================
+ * WAIT
+ * ========================================================= */
 
-  if (elapsedTime < MINIMUM_LOADING_TIME) {
+const waitForMinimumLoadingTime = async startedAt => {
+  const elapsed = Date.now() - startedAt;
+
+  if (elapsed < MINIMUM_LOADING_TIME) {
     await new Promise(resolve => {
-      setTimeout(
-        resolve,
-        MINIMUM_LOADING_TIME - elapsedTime,
-      );
+      setTimeout(resolve, MINIMUM_LOADING_TIME - elapsed);
     });
   }
 };
 
-/**
- * Use this function only when the driver
- * manually presses the Logout button.
- */
+/* =========================================================
+ * NORMALIZE STATUS
+ * ========================================================= */
+
+const normalizeApprovalValue = value =>
+  String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+
+/* =========================================================
+ * GET APPROVAL STATUS
+ * ========================================================= */
+
+const getDriverApprovalStatus = (responseData, driver) => {
+  const booleanApproval =
+    driver?.is_approved ??
+    driver?.isApproved ??
+    responseData?.is_approved ??
+    responseData?.isApproved ??
+    responseData?.data?.is_approved ??
+    responseData?.data?.isApproved;
+
+  if (
+    booleanApproval === true ||
+    booleanApproval === 1 ||
+    booleanApproval === '1'
+  ) {
+    return 'approved';
+  }
+
+  if (
+    booleanApproval === false ||
+    booleanApproval === 0 ||
+    booleanApproval === '0'
+  ) {
+    return 'pending';
+  }
+
+  const explicitStatus =
+    driver?.approval_status ??
+    driver?.approvalStatus ??
+    driver?.verification_status ??
+    driver?.verificationStatus ??
+    driver?.account_status ??
+    driver?.accountStatus ??
+    responseData?.approval_status ??
+    responseData?.approvalStatus ??
+    responseData?.verification_status ??
+    responseData?.account_status ??
+    responseData?.data?.approval_status ??
+    responseData?.data?.approvalStatus ??
+    responseData?.data?.verification_status ??
+    responseData?.data?.account_status;
+
+  if (
+    explicitStatus !== undefined &&
+    explicitStatus !== null &&
+    String(explicitStatus).trim() !== ''
+  ) {
+    return normalizeApprovalValue(explicitStatus);
+  }
+
+  const genericStatus = normalizeApprovalValue(
+    driver?.status ??
+      responseData?.driver?.status ??
+      responseData?.data?.driver?.status ??
+      '',
+  );
+
+  const knownApprovalStatuses = [
+    'approved',
+    'pending',
+    'pending_approval',
+    'awaiting_approval',
+    'unapproved',
+    'rejected',
+    'inactive',
+    'suspended',
+  ];
+
+  if (knownApprovalStatuses.includes(genericStatus)) {
+    return genericStatus;
+  }
+
+  return null;
+};
+
+/* =========================================================
+ * BLOCKED STATUS
+ * ========================================================= */
+
+const isApprovalBlocked = approvalStatus => {
+  const status = normalizeApprovalValue(approvalStatus);
+
+  return [
+    'pending',
+    'pending_approval',
+    'awaiting_approval',
+    'unapproved',
+    'rejected',
+    'inactive',
+    'suspended',
+    'disabled',
+    'blocked',
+  ].includes(status);
+};
+
+/* =========================================================
+ * APPROVAL MESSAGE
+ * ========================================================= */
+
+const getApprovalMessage = status => {
+  const value = normalizeApprovalValue(status);
+
+  if (value === 'rejected') {
+    return {
+      title: 'Registration Not Approved',
+      message:
+        'Your driver registration was not approved. Please contact the administrator for more information.',
+    };
+  }
+
+  if (['inactive', 'suspended', 'disabled', 'blocked'].includes(value)) {
+    return {
+      title: 'Account Unavailable',
+      message:
+        'Your driver account is currently inactive. Please contact the administrator.',
+    };
+  }
+
+  return {
+    title: 'Approval Pending',
+    message:
+      'Your driver registration is still waiting for admin approval. You can login after the administrator approves your account.',
+  };
+};
+
+/* =========================================================
+ * CLEAR SESSION
+ * ========================================================= */
+
 export const clearDriverLoginSession = async () => {
   try {
+    await AsyncStorage.setItem(AUTH_LOGOUT_FLAG_KEY, '1');
+
     await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
     await AsyncStorage.removeItem(AUTH_USER_KEY);
     await AsyncStorage.removeItem(AUTH_EMAIL_KEY);
 
-    delete axios.defaults.headers.common.Authorization;
+    if (
+      axios.defaults &&
+      axios.defaults.headers &&
+      axios.defaults.headers.common
+    ) {
+      delete axios.defaults.headers.common.Authorization;
+    }
+
+    return true;
   } catch (error) {
-    console.log(
-      'Clear driver login session error:',
-      error,
-    );
+    console.log('CLEAR LOGIN SESSION ERROR:', error);
 
     throw error;
   }
 };
 
-const LoginScreen = ({navigation}) => {
-  const {width, height} = useWindowDimensions();
+/* =========================================================
+ * REMOVE AUTH WITHOUT SETTING LOGOUT
+ * ========================================================= */
 
-  const [email, setEmail] = useState('');
+const removeAuthenticationData = async () => {
+  await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+  await AsyncStorage.removeItem(AUTH_USER_KEY);
+  await AsyncStorage.removeItem(AUTH_EMAIL_KEY);
+
+  if (
+    axios.defaults &&
+    axios.defaults.headers &&
+    axios.defaults.headers.common
+  ) {
+    delete axios.defaults.headers.common.Authorization;
+  }
+};
+
+/* =========================================================
+ * LOGIN
+ * ========================================================= */
+
+const LoginScreen = ({ navigation, route }) => {
+  const { width, height } = useWindowDimensions();
+
+  const [email, setEmail] = useState(route?.params?.registeredEmail ?? '');
+
   const [password, setPassword] = useState('');
 
-  const [showPassword, setShowPassword] =
-    useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const [isLoading, setIsLoading] =
-    useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const [checkingSession, setCheckingSession] =
-    useState(true);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  const [registrationNotice, setRegistrationNotice] = useState(
+    route?.params?.registrationMessage ?? '',
+  );
 
   const [errorPopup, setErrorPopup] = useState({
     visible: false,
@@ -87,38 +275,81 @@ const LoginScreen = ({navigation}) => {
     buttonText: 'Try Again',
   });
 
+  const mountedRef = useRef(false);
+
+  const loginInProgressRef = useRef(false);
+
+  const navigatingToHomeRef = useRef(false);
+
+  /* NEW:
+   * Used so pressing NEXT on email moves directly
+   * to the password input.
+   */
+  const passwordInputRef = useRef(null);
+
+  /* =======================================================
+   * MOUNT
+   * ======================================================= */
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /* =======================================================
+   * RESPONSIVE
+   * ======================================================= */
+
   const isSmallScreen = width <= 360;
+
   const isShortScreen = height <= 700;
 
-  const horizontalPadding = isSmallScreen
-    ? 18
-    : 24;
+  const horizontalPadding = isSmallScreen ? 18 : 24;
 
-  const cardWidth = Math.min(
-    width - horizontalPadding * 2,
-    460,
-  );
+  const cardWidth = Math.min(width - horizontalPadding * 2, 460);
 
-  /**
-   * Redirect to HomeScreen and remove
-   * Login from the navigation history.
-   */
+  /* =======================================================
+   * HOME
+   * ======================================================= */
+
   const navigateToHome = () => {
-    navigation.reset({
-      index: 0,
-      routes: [
-        {
-          name: 'MainTabs',
-        },
-      ],
-    });
+    if (navigatingToHomeRef.current) {
+      return;
+    }
+
+    navigatingToHomeRef.current = true;
+
+    try {
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+
+          routes: [
+            {
+              name: 'MainTabs',
+            },
+          ],
+        }),
+      );
+    } catch (error) {
+      navigatingToHomeRef.current = false;
+
+      console.log('NAVIGATION ERROR:', error);
+    }
   };
 
-  const showErrorPopup = (
-    title,
-    message,
-    buttonText = 'Try Again',
-  ) => {
+  /* =======================================================
+   * ERROR
+   * ======================================================= */
+
+  const showErrorPopup = (title, message, buttonText = 'Try Again') => {
+    if (!mountedRef.current) {
+      return;
+    }
+
     setErrorPopup({
       visible: true,
       title,
@@ -128,212 +359,182 @@ const LoginScreen = ({navigation}) => {
   };
 
   const closeErrorPopup = () => {
-    setErrorPopup(previousValue => ({
-      ...previousValue,
-      visible: false,
-    }));
+    if (mountedRef.current) {
+      setErrorPopup(current => ({
+        ...current,
+        visible: false,
+      }));
+    }
   };
 
-  /**
-   * Restore the saved login when the app opens.
-   */
-  useEffect(() => {
-    let componentMounted = true;
+  /* =======================================================
+   * RESTORE SESSION
+   * ======================================================= */
 
-    const restoreDriverSession = async () => {
+  useEffect(() => {
+    let active = true;
+
+    const restore = async () => {
       try {
-        const savedToken =
-          await AsyncStorage.getItem(
-            AUTH_TOKEN_KEY,
-          );
+        const logoutFlag = await AsyncStorage.getItem(AUTH_LOGOUT_FLAG_KEY);
+
+        if (logoutFlag === '1') {
+          await removeAuthenticationData();
+
+          if (active && mountedRef.current) {
+            setCheckingSession(false);
+          }
+
+          return;
+        }
+
+        const savedToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+
+        const savedUserText = await AsyncStorage.getItem(AUTH_USER_KEY);
+
+        let savedUser = null;
+
+        if (savedUserText) {
+          try {
+            savedUser = JSON.parse(savedUserText);
+          } catch (error) {
+            savedUser = null;
+          }
+        }
+
+        const storedApproval = getDriverApprovalStatus({}, savedUser);
+
+        if (storedApproval && isApprovalBlocked(storedApproval)) {
+          await removeAuthenticationData();
+
+          if (active && mountedRef.current) {
+            setCheckingSession(false);
+          }
+
+          return;
+        }
 
         if (savedToken) {
-          axios.defaults.headers.common.Authorization =
-            `Bearer ${savedToken}`;
+          axios.defaults.headers.common.Authorization = `Bearer ${savedToken}`;
 
-          if (componentMounted) {
+          if (active && mountedRef.current) {
             setCheckingSession(false);
+
             navigateToHome();
           }
 
           return;
         }
-      } catch (error) {
-        console.log(
-          'Restore driver session error:',
-          error,
-        );
-      }
 
-      if (componentMounted) {
-        setCheckingSession(false);
+        if (active && mountedRef.current) {
+          setCheckingSession(false);
+        }
+      } catch (error) {
+        console.log('RESTORE LOGIN ERROR:', error);
+
+        if (active && mountedRef.current) {
+          setCheckingSession(false);
+        }
       }
     };
 
-    restoreDriverSession();
+    restore();
 
     return () => {
-      componentMounted = false;
+      active = false;
     };
   }, []);
 
-  /**
-   * Convert Laravel validation errors
-   * into a readable string without using .flat().
-   */
+  /* =======================================================
+   * VALIDATION ERRORS
+   * ======================================================= */
+
   const extractValidationErrors = errors => {
     const messages = [];
 
-    if (
-      !errors ||
-      typeof errors !== 'object'
-    ) {
+    if (!errors || typeof errors !== 'object') {
       return messages;
     }
 
-    Object.keys(errors).forEach(fieldName => {
-      const fieldErrors = errors[fieldName];
-
-      if (Array.isArray(fieldErrors)) {
-        fieldErrors.forEach(message => {
+    Object.values(errors).forEach(value => {
+      if (Array.isArray(value)) {
+        value.forEach(message => {
           if (message) {
             messages.push(String(message));
           }
         });
-      } else if (fieldErrors) {
-        messages.push(String(fieldErrors));
+      } else if (value) {
+        messages.push(String(value));
       }
     });
 
     return messages;
   };
 
+  /* =======================================================
+   * LOGIN ERROR
+   * ======================================================= */
+
   const getLoginErrorMessage = error => {
-    console.log(
-      '========== LOGIN ERROR ==========',
-    );
-
-    console.log(
-      'Error message:',
-      error?.message,
-    );
-
-    console.log(
-      'Error code:',
-      error?.code,
-    );
-
-    console.log(
-      'HTTP status:',
-      error?.response?.status,
-    );
-
-    console.log(
-      'Response data:',
-      error?.response?.data,
-    );
-
-    console.log(
-      'Request URL:',
-      error?.config?.url,
-    );
-
-    console.log(
-      '=================================',
-    );
-
-    /*
-     * Server responded with an error.
-     */
     if (error?.response) {
-      const responseData =
-        error.response.data;
+      const data = error.response.data;
 
-      const validationMessages =
-        extractValidationErrors(
-          responseData?.errors,
-        );
+      const validation = extractValidationErrors(data?.errors);
 
-      if (
-        validationMessages.length > 0
-      ) {
-        return validationMessages.join(
-          '\n',
+      if (validation.length > 0) {
+        return validation.join('\n');
+      }
+
+      if (error.response.status === 403) {
+        return (
+          data?.message ||
+          'Your driver account is waiting for administrator approval.'
         );
       }
 
-      if (
-        error.response.status === 401 ||
-        error.response.status === 403
-      ) {
-        return (
-          responseData?.message ||
-          'The email address or password is incorrect.'
-        );
+      if (error.response.status === 401) {
+        return data?.message || 'The email address or password is incorrect.';
       }
 
-      if (
-        error.response.status === 422
-      ) {
-        return (
-          responseData?.message ||
-          'Please check your email address and password.'
-        );
+      if (error.response.status === 422) {
+        return data?.message || 'Please check your login details.';
       }
 
       return (
-        responseData?.message ||
-        responseData?.error ||
-        `The server returned error ${error.response.status}.`
+        data?.message || data?.error || `Server error ${error.response.status}.`
       );
     }
 
-    /*
-     * Request timed out.
-     */
-    if (
-      error?.code === 'ECONNABORTED'
-    ) {
+    if (error?.code === 'ECONNABORTED') {
       return 'The login request timed out. Please try again.';
     }
 
-    /*
-     * Request was sent but no response was received.
-     */
     if (error?.request) {
-      return (
-        'The login server did not respond. ' +
-        'Please check the server, SSL certificate, or Android internet permission.'
-      );
+      return 'The login server did not respond. Please check your internet connection.';
     }
 
-    /*
-     * JavaScript or Axios configuration error.
-     */
-    return (
-      error?.message ||
-      'An unexpected error occurred during login.'
-    );
+    return error?.message || 'An unexpected login error occurred.';
   };
+
+  /* =======================================================
+   * LOGIN
+   * ======================================================= */
 
   const handleLogin = async () => {
     if (
       isLoading ||
-      checkingSession
+      checkingSession ||
+      loginInProgressRef.current ||
+      navigatingToHomeRef.current
     ) {
       return;
     }
 
-    const cleanEmail = email
-      .trim()
-      .toLowerCase();
+    const cleanEmail = email.trim().toLowerCase();
 
     const cleanPassword = password;
 
-    if (
-      !cleanEmail &&
-      !cleanPassword
-    ) {
+    if (!cleanEmail && !cleanPassword) {
       showErrorPopup(
         'Required Fields',
         'Please enter your email address and password.',
@@ -353,12 +554,7 @@ const LoginScreen = ({navigation}) => {
       return;
     }
 
-    const emailPattern =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (
-      !emailPattern.test(cleanEmail)
-    ) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       showErrorPopup(
         'Invalid Email',
         'Please enter a valid email address.',
@@ -380,6 +576,7 @@ const LoginScreen = ({navigation}) => {
 
     const requestData = {
       email: cleanEmail,
+
       password: cleanPassword,
 
       device_name:
@@ -388,819 +585,661 @@ const LoginScreen = ({navigation}) => {
           : 'KP Kitchen iOS App',
     };
 
-    const loginStartedAt = Date.now();
+    const startedAt = Date.now();
+
+    loginInProgressRef.current = true;
 
     try {
-      setIsLoading(true);
+      if (mountedRef.current) {
+        setIsLoading(true);
+      }
 
-      console.log(
-        'Login API URL:',
+      await removeAuthenticationData();
+
+      const response = await axios.post(
         LOGIN_API_URL,
-      );
 
-      console.log('Login request:', {
-        email: requestData.email,
-        device_name:
-          requestData.device_name,
-      });
+        requestData,
 
-      const response =
-        await axios.post(
-          LOGIN_API_URL,
-          requestData,
-          {
-            headers: {
-              Accept:
-                'application/json',
-
-              'Content-Type':
-                'application/json',
-            },
-
-            timeout: 20000,
-          },
-        );
-
-      console.log(
-        'Complete login response:',
-        response.data,
-      );
-
-      /*
-       * Some APIs return HTTP 200 while
-       * status or success is false.
-       */
-      if (
-        response.data?.status ===
-          false ||
-        response.data?.success ===
-          false
-      ) {
-        await waitForMinimumLoadingTime(
-          loginStartedAt,
-        );
-
-        setIsLoading(false);
-
-        showErrorPopup(
-          'Login Failed',
-          response.data?.message ||
-            'The email address or password is incorrect.',
-          'Try Again',
-        );
-
-        return;
-      }
-
-      /*
-       * Support common Laravel Sanctum
-       * token response formats.
-       */
-      const token =
-        response.data?.token ||
-        response.data?.access_token ||
-        response.data?.plainTextToken ||
-        response.data?.plain_text_token ||
-        response.data?.data?.token ||
-        response.data?.data
-          ?.access_token ||
-        response.data?.data
-          ?.plainTextToken ||
-        response.data?.data
-          ?.plain_text_token;
-
-      const driver =
-        response.data?.driver ||
-        response.data?.user ||
-        response.data?.data?.driver ||
-        response.data?.data?.user ||
-        null;
-
-      if (!token) {
-        await waitForMinimumLoadingTime(
-          loginStartedAt,
-        );
-
-        setIsLoading(false);
-
-        showErrorPopup(
-          'Token Not Received',
-          'The login API did not return an authentication token. Check the complete API response in Metro.',
-          'Close',
-        );
-
-        return;
-      }
-
-      /*
-       * Save login information permanently.
-       * The password is never stored.
-       */
-      await AsyncStorage.setItem(
-        AUTH_TOKEN_KEY,
-        String(token),
-      );
-
-      await AsyncStorage.setItem(
-        AUTH_USER_KEY,
-        JSON.stringify(driver || {}),
-      );
-
-      await AsyncStorage.setItem(
-        AUTH_EMAIL_KEY,
-        cleanEmail,
-      );
-
-      /*
-       * Add the token to future Axios requests.
-       */
-      axios.defaults.headers.common.Authorization =
-        `Bearer ${token}`;
-
-      console.log(
-        'Login session saved successfully.',
-      );
-
-      setPassword('');
-
-      /*
-       * Keep the loading popup visible briefly.
-       */
-      await waitForMinimumLoadingTime(
-        loginStartedAt,
-      );
-
-      setIsLoading(false);
-
-      /*
-       * Redirect only after successful login.
-       */
-      navigateToHome();
-    } catch (error) {
-      console.log(
-        'Axios login error:',
         {
-          message: error?.message,
-          code: error?.code,
-          status:
-            error?.response?.status,
-          response:
-            error?.response?.data,
-          url: error?.config?.url,
+          headers: {
+            Accept: 'application/json',
+
+            'Content-Type': 'application/json',
+          },
+
+          timeout: 20000,
         },
       );
 
-      const errorMessage =
-        getLoginErrorMessage(error);
+      console.log('COMPLETE LOGIN RESPONSE:', response?.data);
 
-      await waitForMinimumLoadingTime(
-        loginStartedAt,
-      );
+      /* =============================================
+       * API SAYS LOGIN FAILED
+       * ============================================= */
+
+      if (
+        response?.data?.status === false ||
+        response?.data?.success === false
+      ) {
+        await waitForMinimumLoadingTime(startedAt);
+
+        loginInProgressRef.current = false;
+
+        if (mountedRef.current) {
+          setIsLoading(false);
+
+          const message = response?.data?.message || 'Unable to login.';
+
+          const lower = message.toLowerCase();
+
+          const approvalRelated =
+            lower.includes('approval') ||
+            lower.includes('pending') ||
+            lower.includes('not approved') ||
+            lower.includes('inactive');
+
+          showErrorPopup(
+            approvalRelated ? 'Approval Pending' : 'Login Failed',
+
+            message,
+
+            approvalRelated ? 'OK' : 'Try Again',
+          );
+        }
+
+        return;
+      }
+
+      /* =============================================
+       * DRIVER
+       * ============================================= */
+
+      const driver =
+        response?.data?.driver ||
+        response?.data?.user ||
+        response?.data?.data?.driver ||
+        response?.data?.data?.user ||
+        null;
+
+      /* =============================================
+       * APPROVAL STATUS
+       * ============================================= */
+
+      const approvalStatus = getDriverApprovalStatus(response?.data, driver);
+
+      console.log('DRIVER APPROVAL STATUS:', approvalStatus);
+
+      if (approvalStatus && isApprovalBlocked(approvalStatus)) {
+        await removeAuthenticationData();
+
+        await waitForMinimumLoadingTime(startedAt);
+
+        loginInProgressRef.current = false;
+
+        if (mountedRef.current) {
+          setIsLoading(false);
+
+          const approval = getApprovalMessage(approvalStatus);
+
+          showErrorPopup(approval.title, approval.message, 'OK');
+        }
+
+        return;
+      }
+
+      /* =============================================
+       * TOKEN
+       * ============================================= */
+
+      const token =
+        response?.data?.token ||
+        response?.data?.access_token ||
+        response?.data?.plainTextToken ||
+        response?.data?.plain_text_token ||
+        response?.data?.data?.token ||
+        response?.data?.data?.access_token ||
+        response?.data?.data?.plainTextToken ||
+        response?.data?.data?.plain_text_token;
+
+      if (!token) {
+        await waitForMinimumLoadingTime(startedAt);
+
+        loginInProgressRef.current = false;
+
+        if (mountedRef.current) {
+          setIsLoading(false);
+
+          showErrorPopup(
+            'Login Unavailable',
+            'The login API did not return an authentication token.',
+            'Close',
+          );
+        }
+
+        return;
+      }
+
+      /* =============================================
+       * SAVE ONLY APPROVED LOGIN
+       * ============================================= */
+
+      await AsyncStorage.setItem(AUTH_TOKEN_KEY, String(token));
+
+      await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(driver || {}));
+
+      await AsyncStorage.setItem(AUTH_EMAIL_KEY, cleanEmail);
+
+      await AsyncStorage.removeItem(AUTH_LOGOUT_FLAG_KEY);
+
+      const storedToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+
+      if (!storedToken) {
+        throw new Error('Login token could not be saved.');
+      }
+
+      axios.defaults.headers.common.Authorization = `Bearer ${storedToken}`;
+
+      if (mountedRef.current) {
+        setPassword('');
+      }
+
+      await waitForMinimumLoadingTime(startedAt);
+
+      if (!mountedRef.current) {
+        return;
+      }
 
       setIsLoading(false);
 
+      loginInProgressRef.current = false;
+
+      navigateToHome();
+    } catch (error) {
+      console.log('LOGIN ERROR STATUS:', error?.response?.status);
+
+      console.log('LOGIN ERROR DATA:', error?.response?.data);
+
+      loginInProgressRef.current = false;
+
+      navigatingToHomeRef.current = false;
+
+      await removeAuthenticationData();
+
+      await waitForMinimumLoadingTime(startedAt);
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setIsLoading(false);
+
+      const message = getLoginErrorMessage(error);
+
+      const lower = String(message).toLowerCase();
+
+      const approvalRelated =
+        error?.response?.status === 403 ||
+        lower.includes('approval') ||
+        lower.includes('pending') ||
+        lower.includes('not approved') ||
+        lower.includes('inactive');
+
       showErrorPopup(
-        'Login Failed',
-        errorMessage,
-        'Try Again',
+        approvalRelated ? 'Approval Pending' : 'Login Failed',
+
+        message,
+
+        approvalRelated ? 'OK' : 'Try Again',
       );
     }
   };
 
-  /**
-   * Show loading while checking whether
-   * the driver is already logged in.
-   */
+  /* =======================================================
+   * SESSION LOADER
+   * ======================================================= */
+
   if (checkingSession) {
     return (
-      <SafeAreaView
-        style={styles.safeArea}>
-        <StatusBar
-          barStyle="dark-content"
-          backgroundColor="#f8f9fb"
-        />
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor="#f8f9fb" />
 
-        <View
-          style={styles.sessionLoader}>
-          <View
-            style={
-              styles.sessionLoaderIcon
-            }>
-            <ActivityIndicator
-              size="large"
-              color="#d00018"
-            />
+        <View style={styles.sessionLoader}>
+          <View style={styles.sessionLoaderIcon}>
+            <ActivityIndicator size="large" color="#d00018" />
           </View>
 
-          <Text
-            style={
-              styles.sessionLoaderTitle
-            }>
-            Checking Your Session
-          </Text>
+          <Text style={styles.sessionLoaderTitle}>Checking Your Session</Text>
 
-          <Text
-            style={
-              styles.sessionLoaderText
-            }>
-            Please wait while we open
-            your account.
+          <Text style={styles.sessionLoaderText}>
+            Please wait while we verify your account.
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  /* =======================================================
+   * UI
+   * ======================================================= */
+
   return (
-    <SafeAreaView
-      style={styles.safeArea}>
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor="#f8f9fb"
-      />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#f8f9fb" />
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          {
-            paddingHorizontal:
-              horizontalPadding,
+      {/* ===================================================
+          KEYBOARD FIX
 
-            paddingTop:
-              isShortScreen
-                ? 20
-                : 42,
+          iOS:
+          Uses padding when keyboard opens.
 
-            paddingBottom: 100,
-          },
-        ]}
-        showsVerticalScrollIndicator={
-          false
-        }
-        keyboardShouldPersistTaps="handled"
-        bounces={false}
-        overScrollMode="never">
-        <View style={styles.page}>
-          {/* Decorative circles */}
+          Android:
+          Reduces available view height.
 
-          <View
-            pointerEvents="none"
-            style={[
-              styles.decorativeCircle,
-              styles.topCircle,
-              {
-                width: width * 0.58,
-                height: width * 0.58,
+          Because ScrollView is inside this component,
+          the user can scroll the complete login screen
+          while typing.
+          =================================================== */}
 
-                borderRadius:
-                  width * 0.29,
-              },
-            ]}
-          />
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[
+            styles.scrollContent,
 
-          <View
-            pointerEvents="none"
-            style={[
-              styles.decorativeCircle,
-              styles.bottomCircle,
-              {
-                width: width * 0.42,
-                height: width * 0.42,
+            {
+              paddingHorizontal: horizontalPadding,
 
-                borderRadius:
-                  width * 0.21,
-              },
-            ]}
-          />
+              paddingTop: isShortScreen ? 20 : 42,
 
-          {/* Brand */}
+              /*
+               * Keep extra space at bottom.
+               * This allows password/login button
+               * area to scroll comfortably above
+               * the keyboard.
+               */
+              paddingBottom: 120,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          /*
+           * Allows buttons and fields to
+           * continue receiving touches while
+           * keyboard is open.
+           */
+          keyboardShouldPersistTaps="handled"
+          /*
+           * Important:
+           * dragging the screen will NOT
+           * automatically close the keyboard.
+           */
+          keyboardDismissMode="none"
+          /*
+           * Explicitly keep scrolling enabled
+           * while keyboard is displayed.
+           */
+          scrollEnabled={true}
+          bounces={false}
+          overScrollMode="never"
+        >
+          <View style={styles.page}>
+            {/* DECORATIVE TOP CIRCLE */}
 
-          <View
-            style={styles.brandSection}>
             <View
+              pointerEvents="none"
               style={[
-                styles.logoContainer,
+                styles.decorativeCircle,
+                styles.topCircle,
+
                 {
-                  width:
-                    isSmallScreen
-                      ? 74
-                      : 86,
+                  width: width * 0.58,
 
-                  height:
-                    isSmallScreen
-                      ? 74
-                      : 86,
+                  height: width * 0.58,
 
-                  borderRadius:
-                    isSmallScreen
-                      ? 23
-                      : 27,
+                  borderRadius: width * 0.29,
                 },
-              ]}>
-              <Image
-                source={require('../assets/delivery-bike-light.png')}
-                resizeMode="contain"
-                style={[
-                  styles.logo,
-                  {
-                    width:
-                      isSmallScreen
-                        ? 40
-                        : 48,
+              ]}
+            />
 
-                    height:
-                      isSmallScreen
-                        ? 40
-                        : 48,
+            {/* DECORATIVE BOTTOM CIRCLE */}
+
+            <View
+              pointerEvents="none"
+              style={[
+                styles.decorativeCircle,
+                styles.bottomCircle,
+
+                {
+                  width: width * 0.42,
+
+                  height: width * 0.42,
+
+                  borderRadius: width * 0.21,
+                },
+              ]}
+            />
+
+            {/* BRAND */}
+
+            <View style={styles.brandSection}>
+              <View
+                style={[
+                  styles.logoContainer,
+
+                  {
+                    width: isSmallScreen ? 74 : 86,
+
+                    height: isSmallScreen ? 74 : 86,
+
+                    borderRadius: isSmallScreen ? 23 : 27,
                   },
                 ]}
-              />
-            </View>
+              >
+                <Image
+                  source={require('../assets/delivery-bike-light.png')}
+                  resizeMode="contain"
+                  style={[
+                    styles.logo,
 
-            <Text
-              style={[
-                styles.brandTitle,
-                {
-                  fontSize:
-                    isSmallScreen
-                      ? 27
-                      : 32,
-                },
-              ]}>
-              Welcome Back
-            </Text>
+                    {
+                      width: isSmallScreen ? 40 : 48,
 
-            <Text
-              style={[
-                styles.brandSubtitle,
-                {
-                  fontSize:
-                    isSmallScreen
-                      ? 14
-                      : 15,
-                },
-              ]}>
-              Sign in to manage your
-              deliveries and orders.
-            </Text>
-          </View>
-
-          {/* Login card */}
-
-          <View
-            style={[
-              styles.loginCard,
-              {
-                width: cardWidth,
-
-                padding:
-                  isSmallScreen
-                    ? 18
-                    : 24,
-
-                borderRadius:
-                  isSmallScreen
-                    ? 24
-                    : 28,
-              },
-            ]}>
-            <View
-              style={styles.cardHeader}>
-              <Text
-                style={[
-                  styles.cardTitle,
-                  {
-                    fontSize:
-                      isSmallScreen
-                        ? 22
-                        : 25,
-                  },
-                ]}>
-                Login
-              </Text>
-
-              <Text
-                style={
-                  styles.cardDescription
-                }>
-                Enter your registered
-                email address and
-                password to continue.
-              </Text>
-            </View>
-
-            {/* Email */}
-
-            <View
-              style={styles.inputGroup}>
-              <Text
-                style={styles.inputLabel}>
-                Email Address
-              </Text>
-
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/mail.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
-                </View>
-
-                <TextInput
-                  value={email}
-                  onChangeText={setEmail}
-                  placeholder="Enter your email address"
-                  placeholderTextColor="#9ca3af"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="next"
-                  editable={!isLoading}
-                  style={
-                    styles.textInput
-                  }
+                      height: isSmallScreen ? 40 : 48,
+                    },
+                  ]}
                 />
               </View>
-            </View>
 
-            {/* Password */}
-
-            <View
-              style={styles.inputGroup}>
               <Text
-                style={styles.inputLabel}>
-                Password
+                style={[
+                  styles.brandTitle,
+
+                  {
+                    fontSize: isSmallScreen ? 27 : 32,
+                  },
+                ]}
+              >
+                Welcome Back
               </Text>
 
-              <View
-                style={
-                  styles.inputContainer
-                }>
-                <View
-                  pointerEvents="none"
-                  style={
-                    styles.inputIconContainer
-                  }>
-                  <Image
-                    source={require('../assets/padlock.png')}
-                    style={
-                      styles.inputImage
-                    }
-                  />
+              <Text style={styles.brandSubtitle}>
+                Sign in to manage your deliveries and orders.
+              </Text>
+            </View>
+
+            {/* REGISTRATION NOTICE */}
+
+            {!!registrationNotice && (
+              <View style={styles.registrationNotice}>
+                <View style={styles.registrationNoticeIcon}>
+                  <Text style={styles.registrationNoticeIconText}>!</Text>
                 </View>
 
-                <TextInput
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Enter your password"
-                  placeholderTextColor="#9ca3af"
-                  secureTextEntry={
-                    !showPassword
-                  }
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="done"
-                  onSubmitEditing={
-                    handleLogin
-                  }
-                  editable={!isLoading}
-                  style={
-                    styles.textInput
-                  }
-                />
+                <View
+                  style={{
+                    flex: 1,
+                  }}
+                >
+                  <Text style={styles.registrationNoticeTitle}>
+                    Registration Submitted
+                  </Text>
+
+                  <Text style={styles.registrationNoticeText}>
+                    Your account must be approved by an administrator before you
+                    can login.
+                  </Text>
+                </View>
+
+                <Pressable onPress={() => setRegistrationNotice('')}>
+                  <Text style={styles.noticeClose}>×</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {/* LOGIN CARD */}
+
+            <View
+              style={[
+                styles.loginCard,
+
+                {
+                  width: cardWidth,
+
+                  padding: isSmallScreen ? 18 : 24,
+
+                  borderRadius: isSmallScreen ? 24 : 28,
+                },
+              ]}
+            >
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>Login</Text>
+
+                <Text style={styles.cardDescription}>
+                  Only approved driver accounts can access the driver dashboard.
+                </Text>
+              </View>
+
+              {/* EMAIL */}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Email Address</Text>
+
+                <View style={styles.inputContainer}>
+                  <View pointerEvents="none" style={styles.inputIconContainer}>
+                    <Image
+                      source={require('../assets/mail.png')}
+                      style={styles.inputImage}
+                    />
+                  </View>
+
+                  <TextInput
+                    value={email}
+                    onChangeText={setEmail}
+                    placeholder="Enter your email address"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    /*
+                     * Do not close keyboard
+                     * when pressing NEXT.
+                     */
+                    blurOnSubmit={false}
+                    /*
+                     * Automatically move to
+                     * password field.
+                     */
+                    onSubmitEditing={() => {
+                      passwordInputRef.current?.focus();
+                    }}
+                    editable={!isLoading}
+                    style={styles.textInput}
+                  />
+                </View>
+              </View>
+
+              {/* PASSWORD */}
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Password</Text>
+
+                <View style={styles.inputContainer}>
+                  <View pointerEvents="none" style={styles.inputIconContainer}>
+                    <Image
+                      source={require('../assets/padlock.png')}
+                      style={styles.inputImage}
+                    />
+                  </View>
+
+                  <TextInput
+                    ref={passwordInputRef}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Enter your password"
+                    placeholderTextColor="#9ca3af"
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    onSubmitEditing={handleLogin}
+                    editable={!isLoading}
+                    style={styles.textInput}
+                  />
+
+                  <Pressable
+                    disabled={isLoading}
+                    onPress={() => setShowPassword(previous => !previous)}
+                    style={styles.visibilityButton}
+                  >
+                    <Image
+                      source={
+                        showPassword
+                          ? require('../assets/eye-open.png')
+                          : require('../assets/eye-close.png')
+                      }
+                      style={styles.visibilityImage}
+                    />
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* OPTIONS */}
+
+              <View style={styles.optionsRow}>
+                <View style={styles.rememberButton}>
+                  <View style={styles.checkbox}>
+                    <View style={styles.checkboxInner} />
+                  </View>
+
+                  <Text style={styles.rememberText}>Stay signed in</Text>
+                </View>
 
                 <Pressable
-                  onPress={() => {
-                    setShowPassword(
-                      previousValue =>
-                        !previousValue,
-                    );
-                  }}
                   disabled={isLoading}
-                  hitSlop={8}
-                  style={({pressed}) => [
-                    styles.visibilityButton,
+                  onPress={() => navigation.navigate('ForgotPassword')}
+                >
+                  <Text style={styles.forgotText}>Forgot Password?</Text>
+                </Pressable>
+              </View>
 
-                    pressed &&
-                      styles.pressedOpacity,
-                  ]}>
-                  <Image
-                    source={
-                      showPassword
-                        ? require('../assets/eye-open.png')
-                        : require('../assets/eye-close.png')
-                    }
-                    style={
-                      styles.visibilityImage
-                    }
-                  />
+              {/* LOGIN */}
+
+              <Pressable
+                disabled={isLoading}
+                onPress={handleLogin}
+                style={({ pressed }) => [
+                  styles.loginButton,
+
+                  isLoading && styles.loginButtonDisabled,
+
+                  pressed && !isLoading && styles.loginButtonPressed,
+                ]}
+              >
+                {isLoading ? (
+                  <>
+                    <ActivityIndicator size="small" color="#ffffff" />
+
+                    <Text style={styles.loadingButtonText}>Signing in...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.loginButtonText}>Login</Text>
+
+                    <Image
+                      source={require('../assets/right-arrow.png')}
+                      style={styles.loginArrow}
+                    />
+                  </>
+                )}
+              </Pressable>
+
+              {/* REGISTER */}
+
+              <View style={styles.registerRow}>
+                <Text style={styles.registerQuestion}>
+                  Don&apos;t have an account?
+                </Text>
+
+                <Pressable
+                  disabled={isLoading}
+                  onPress={() => navigation.navigate('Register')}
+                >
+                  <Text style={styles.registerText}>Create Account</Text>
                 </Pressable>
               </View>
             </View>
 
-            {/* Login options */}
-
-            <View
-              style={styles.optionsRow}>
-              <View
-                style={
-                  styles.rememberButton
-                }>
-                <View
-                  style={styles.checkbox}>
-                  <View
-                    style={
-                      styles.checkboxInner
-                    }
-                  />
-                </View>
-
-                <Text
-                  style={
-                    styles.rememberText
-                  }>
-                  Stay signed in
-                </Text>
-              </View>
-
-              <Pressable
-                disabled={isLoading}
-                onPress={() => {
-                  navigation.navigate(
-                    'ForgotPassword',
-                  );
-                }}
-                style={({pressed}) => [
-                  styles.forgotButton,
-
-                  pressed &&
-                    styles.pressedOpacity,
-                ]}>
-                <Text
-                  style={styles.forgotText}>
-                  Forgot Password?
-                </Text>
-              </Pressable>
-            </View>
-
-            {/* Login button */}
-
-            <Pressable
-              onPress={handleLogin}
-              disabled={isLoading}
-              style={({pressed}) => [
-                styles.loginButton,
-
-                pressed &&
-                  !isLoading &&
-                  styles.loginButtonPressed,
-
-                isLoading &&
-                  styles.loginButtonDisabled,
-              ]}>
-              {isLoading ? (
-                <View
-                  style={
-                    styles.loadingContent
-                  }>
-                  <ActivityIndicator
-                    size="small"
-                    color="#ffffff"
-                  />
-
-                  <Text
-                    style={
-                      styles.loadingButtonText
-                    }>
-                    Signing in...
-                  </Text>
-                </View>
-              ) : (
-                <>
-                  <Text
-                    style={
-                      styles.loginButtonText
-                    }>
-                    Login
-                  </Text>
-
-                  <View
-                    pointerEvents="none"
-                    style={
-                      styles.loginArrowContainer
-                    }>
-                    <Image
-                      source={require('../assets/right-arrow.png')}
-                      style={
-                        styles.arrowImage
-                      }
-                    />
-                  </View>
-                </>
-              )}
-            </Pressable>
-
-            {/* Registration link */}
-
-            <View
-              style={styles.registerRow}>
-              <Text
-                style={
-                  styles.registerQuestion
-                }>
-                Don&apos;t have an
-                account?
-              </Text>
-
-              <Pressable
-                disabled={isLoading}
-                onPress={() => {
-                  navigation.navigate(
-                    'Register',
-                  );
-                }}
-                style={({pressed}) => [
-                  styles.registerButton,
-
-                  pressed &&
-                    styles.pressedOpacity,
-                ]}>
-                <Text
-                  style={
-                    styles.registerText
-                  }>
-                  Create Account
-                </Text>
-              </Pressable>
-            </View>
+            <Text style={styles.footerText}>
+              Driver access is available only after administrator approval.
+            </Text>
           </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-          <Text
-            style={styles.footerText}>
-            By continuing, you agree to
-            our Terms and Privacy Policy.
-          </Text>
-        </View>
-      </ScrollView>
-
-      {/* Login loading popup */}
+      {/* LOGIN LOADING */}
 
       <Modal
         visible={isLoading}
         transparent
         animationType="fade"
         statusBarTranslucent
-        hardwareAccelerated
-        onRequestClose={() => {}}>
-        <View
-          style={
-            styles.loginLoadingOverlay
-          }>
-          <View
-            style={
-              styles.loginLoadingCard
-            }>
-            <View
-              style={
-                styles.loginLoadingIcon
-              }>
-              <ActivityIndicator
-                size="large"
-                color="#d00018"
-              />
+        onRequestClose={() => {}}
+      >
+        <View style={styles.loginLoadingOverlay}>
+          <View style={styles.loginLoadingCard}>
+            <View style={styles.loginLoadingIcon}>
+              <ActivityIndicator size="large" color="#d00018" />
             </View>
 
-            <Text
-              style={
-                styles.loginLoadingTitle
-              }>
-              Signing You In
+            <Text style={styles.loginLoadingTitle}>Verifying Your Account</Text>
+
+            <Text style={styles.loginLoadingMessage}>
+              Please wait while we check your login and approval status.
             </Text>
-
-            <Text
-              style={
-                styles.loginLoadingMessage
-              }>
-              Please wait while we verify
-              your account and open your
-              dashboard.
-            </Text>
-
-            <View
-              style={
-                styles.loadingDotsRow
-              }>
-              <View
-                style={styles.loadingDot}
-              />
-
-              <View
-                style={[
-                  styles.loadingDot,
-                  styles.loadingDotMiddle,
-                ]}
-              />
-
-              <View
-                style={styles.loadingDot}
-              />
-            </View>
           </View>
         </View>
       </Modal>
 
-      {/* Error popup */}
+      {/* ERROR */}
 
       <Modal
         visible={errorPopup.visible}
         transparent
         animationType="fade"
         statusBarTranslucent
-        hardwareAccelerated
-        onRequestClose={
-          closeErrorPopup
-        }>
-        <View
-          style={styles.modalOverlay}>
+        onRequestClose={closeErrorPopup}
+      >
+        <View style={styles.modalOverlay}>
           <Pressable
-            style={
-              StyleSheet.absoluteFillObject
-            }
+            style={StyleSheet.absoluteFillObject}
             onPress={closeErrorPopup}
           />
 
-          <View
-            style={styles.errorModal}>
-            <Pressable
-              onPress={closeErrorPopup}
-              hitSlop={10}
-              style={({pressed}) => [
-                styles.closeButton,
-
-                pressed &&
-                  styles.closeButtonPressed,
-              ]}>
-              <Text
-                style={
-                  styles.closeButtonText
-                }>
-                ×
-              </Text>
+          <View style={styles.errorModal}>
+            <Pressable onPress={closeErrorPopup} style={styles.closeButton}>
+              <Text style={styles.closeButtonText}>×</Text>
             </Pressable>
 
-            <View
-              style={
-                styles.errorIconOuter
-              }>
-              <View
-                style={
-                  styles.errorIconInner
-                }>
-                <Text
-                  style={
-                    styles.errorIconText
-                  }>
-                  !
-                </Text>
+            <View style={styles.errorIconOuter}>
+              <View style={styles.errorIconInner}>
+                <Text style={styles.errorIconText}>!</Text>
               </View>
             </View>
 
-            <Text
-              style={
-                styles.errorModalTitle
-              }>
-              {errorPopup.title}
-            </Text>
+            <Text style={styles.errorModalTitle}>{errorPopup.title}</Text>
 
-            <Text
-              style={
-                styles.errorModalMessage
-              }>
-              {errorPopup.message}
-            </Text>
+            <Text style={styles.errorModalMessage}>{errorPopup.message}</Text>
 
             <Pressable
               onPress={closeErrorPopup}
-              style={({pressed}) => [
-                styles.errorModalButton,
-
-                pressed &&
-                  styles.errorModalButtonPressed,
-              ]}>
-              <Text
-                style={
-                  styles.errorModalButtonText
-                }>
+              style={styles.errorModalButton}
+            >
+              <Text style={styles.errorModalButtonText}>
                 {errorPopup.buttonText}
               </Text>
             </Pressable>
@@ -1213,10 +1252,23 @@ const LoginScreen = ({navigation}) => {
 
 export default LoginScreen;
 
+/* =========================================================
+ * STYLES
+ * ========================================================= */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#f8f9fb',
+  },
+
+  /*
+   * NEW
+   * Needed so KeyboardAvoidingView occupies
+   * the complete available screen.
+   */
+  keyboardAvoidingView: {
+    flex: 1,
   },
 
   scrollView: {
@@ -1236,8 +1288,7 @@ const styles = StyleSheet.create({
 
   decorativeCircle: {
     position: 'absolute',
-    backgroundColor:
-      'rgba(208, 0, 24, 0.05)',
+    backgroundColor: 'rgba(208,0,24,0.05)',
   },
 
   topCircle: {
@@ -1262,17 +1313,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#d00018',
     marginBottom: 18,
-    elevation: 12,
-
-    shadowColor: '#d00018',
-
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
+    elevation: 10,
   },
 
   logo: {
@@ -1281,18 +1322,72 @@ const styles = StyleSheet.create({
 
   brandTitle: {
     color: '#15171a',
-    fontWeight: '800',
+    fontWeight: '900',
     textAlign: 'center',
-    letterSpacing: -0.5,
   },
 
   brandSubtitle: {
     maxWidth: 310,
     color: '#6b7280',
+    fontSize: 14,
     lineHeight: 22,
     textAlign: 'center',
     marginTop: 8,
   },
+
+  /* REGISTRATION NOTICE */
+
+  registrationNotice: {
+    width: '100%',
+    maxWidth: 460,
+    minHeight: 78,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#fff8e8',
+    borderWidth: 1,
+    borderColor: '#f4d88c',
+    borderRadius: 16,
+    padding: 13,
+    marginBottom: 15,
+  },
+
+  registrationNoticeIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#e6a300',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+
+  registrationNoticeIconText: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '900',
+  },
+
+  registrationNoticeTitle: {
+    color: '#604300',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  registrationNoticeText: {
+    color: '#86651a',
+    fontSize: 10.5,
+    lineHeight: 16,
+    marginTop: 3,
+  },
+
+  noticeClose: {
+    color: '#8d7028',
+    fontSize: 22,
+    lineHeight: 22,
+    marginLeft: 8,
+  },
+
+  /* CARD */
 
   loginCard: {
     alignSelf: 'center',
@@ -1300,16 +1395,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eeeeee',
     elevation: 8,
-
-    shadowColor: '#111827',
-
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
-
-    shadowOpacity: 0.09,
-    shadowRadius: 22,
   },
 
   cardHeader: {
@@ -1318,7 +1403,8 @@ const styles = StyleSheet.create({
 
   cardTitle: {
     color: '#15171a',
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '900',
   },
 
   cardDescription: {
@@ -1376,8 +1462,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingHorizontal: 4,
     paddingVertical: 0,
-    includeFontPadding: false,
-    textAlignVertical: 'center',
   },
 
   visibilityButton: {
@@ -1385,7 +1469,6 @@ const styles = StyleSheet.create({
     height: 38,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 4,
   },
 
   visibilityImage: {
@@ -1398,7 +1481,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 1,
     marginBottom: 22,
   },
 
@@ -1412,8 +1494,6 @@ const styles = StyleSheet.create({
     height: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#d00018',
     borderRadius: 6,
     backgroundColor: '#d00018',
     marginRight: 8,
@@ -1425,13 +1505,11 @@ const styles = StyleSheet.create({
     borderLeftWidth: 2,
     borderBottomWidth: 2,
     borderColor: '#ffffff',
-
     transform: [
       {
         rotate: '-45deg',
       },
     ],
-
     marginTop: -2,
   },
 
@@ -1439,10 +1517,6 @@ const styles = StyleSheet.create({
     color: '#5f6672',
     fontSize: 13,
     fontWeight: '600',
-  },
-
-  forgotButton: {
-    paddingVertical: 5,
   },
 
   forgotText: {
@@ -1460,21 +1534,10 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     paddingHorizontal: 18,
     elevation: 6,
-
-    shadowColor: '#d00018',
-
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-
-    shadowOpacity: 0.24,
-    shadowRadius: 10,
   },
 
   loginButtonPressed: {
     opacity: 0.88,
-
     transform: [
       {
         scale: 0.985,
@@ -1489,13 +1552,7 @@ const styles = StyleSheet.create({
   loginButtonText: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: '800',
-  },
-
-  loadingContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    fontWeight: '900',
   },
 
   loadingButtonText: {
@@ -1505,47 +1562,33 @@ const styles = StyleSheet.create({
     marginLeft: 10,
   },
 
-  loginArrowContainer: {
+  loginArrow: {
     position: 'absolute',
-    right: 12,
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 12,
-
-    backgroundColor:
-      'rgba(255,255,255,0.17)',
-  },
-
-  arrowImage: {
+    right: 18,
     width: 22,
     height: 22,
     resizeMode: 'contain',
+    tintColor: '#ffffff',
   },
 
   registerRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     marginTop: 22,
+    flexWrap: 'wrap',
   },
 
   registerQuestion: {
     color: '#737985',
     fontSize: 14,
-  },
-
-  registerButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 5,
+    marginRight: 5,
   },
 
   registerText: {
     color: '#d00018',
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '900',
   },
 
   footerText: {
@@ -1555,12 +1598,9 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     textAlign: 'center',
     marginTop: 22,
-    zIndex: 1,
   },
 
-  pressedOpacity: {
-    opacity: 0.65,
-  },
+  /* SESSION */
 
   sessionLoader: {
     flex: 1,
@@ -1573,48 +1613,35 @@ const styles = StyleSheet.create({
   sessionLoaderIcon: {
     width: 86,
     height: 86,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderRadius: 43,
     backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
     elevation: 8,
-
-    shadowColor: '#111827',
-
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-
-    shadowOpacity: 0.1,
-    shadowRadius: 18,
   },
 
   sessionLoaderTitle: {
     color: '#17191c',
     fontSize: 20,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontWeight: '900',
     marginTop: 22,
   },
 
   sessionLoaderText: {
-    maxWidth: 310,
     color: '#6b7280',
     fontSize: 13,
-    lineHeight: 20,
     textAlign: 'center',
     marginTop: 8,
   },
+
+  /* LOGIN LOADING */
 
   loginLoadingOverlay: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(17,24,39,0.72)',
     paddingHorizontal: 24,
-
-    backgroundColor:
-      'rgba(17, 24, 39, 0.72)',
   },
 
   loginLoadingCard: {
@@ -1623,76 +1650,42 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#ffffff',
     borderRadius: 28,
-    paddingHorizontal: 28,
-    paddingTop: 34,
-    paddingBottom: 30,
+    padding: 30,
     elevation: 20,
-
-    shadowColor: '#000000',
-
-    shadowOffset: {
-      width: 0,
-      height: 14,
-    },
-
-    shadowOpacity: 0.26,
-    shadowRadius: 24,
   },
 
   loginLoadingIcon: {
     width: 88,
     height: 88,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderRadius: 44,
     backgroundColor: '#fff1f2',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 22,
   },
 
   loginLoadingTitle: {
     color: '#17191c',
-    fontSize: 23,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '900',
     textAlign: 'center',
   },
 
   loginLoadingMessage: {
-    maxWidth: 290,
     color: '#6b7280',
     fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 21,
     textAlign: 'center',
     marginTop: 10,
   },
 
-  loadingDotsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 24,
-  },
-
-  loadingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#d00018',
-    opacity: 0.35,
-  },
-
-  loadingDotMiddle: {
-    marginHorizontal: 8,
-    opacity: 1,
-  },
+  /* ERROR */
 
   modalOverlay: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-
-    backgroundColor:
-      'rgba(17, 24, 39, 0.65)',
-
+    backgroundColor: 'rgba(17,24,39,0.65)',
     paddingHorizontal: 24,
   },
 
@@ -1706,16 +1699,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 24,
     elevation: 20,
-
-    shadowColor: '#000000',
-
-    shadowOffset: {
-      width: 0,
-      height: 14,
-    },
-
-    shadowOpacity: 0.25,
-    shadowRadius: 24,
   },
 
   closeButton: {
@@ -1724,71 +1707,47 @@ const styles = StyleSheet.create({
     right: 14,
     width: 36,
     height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderRadius: 18,
     backgroundColor: '#f3f4f6',
-    zIndex: 2,
-  },
-
-  closeButtonPressed: {
-    opacity: 0.65,
-
-    transform: [
-      {
-        scale: 0.94,
-      },
-    ],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   closeButtonText: {
     color: '#6b7280',
     fontSize: 26,
-    fontWeight: '400',
     lineHeight: 28,
   },
 
   errorIconOuter: {
     width: 94,
     height: 94,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderRadius: 47,
     backgroundColor: '#fff1f2',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 20,
   },
 
   errorIconInner: {
     width: 62,
     height: 62,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderRadius: 31,
     backgroundColor: '#d00018',
-    elevation: 5,
-
-    shadowColor: '#d00018',
-
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   errorIconText: {
     color: '#ffffff',
     fontSize: 36,
     fontWeight: '900',
-    lineHeight: 40,
   },
 
   errorModalTitle: {
     color: '#17191c',
     fontSize: 23,
-    fontWeight: '800',
+    fontWeight: '900',
     textAlign: 'center',
   },
 
@@ -1805,36 +1764,15 @@ const styles = StyleSheet.create({
   errorModalButton: {
     width: '100%',
     minHeight: 55,
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: '#d00018',
     borderRadius: 17,
-    elevation: 5,
-
-    shadowColor: '#d00018',
-
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-
-    shadowOpacity: 0.22,
-    shadowRadius: 8,
-  },
-
-  errorModalButtonPressed: {
-    opacity: 0.86,
-
-    transform: [
-      {
-        scale: 0.985,
-      },
-    ],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   errorModalButtonText: {
     color: '#ffffff',
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: '900',
   },
 });
