@@ -760,6 +760,8 @@ const LoginScreen = ({ navigation, route }) => {
 
       console.log('LOGIN ERROR DATA:', error?.response?.data);
 
+      console.log('LOGIN ERROR NETWORK:', error?.code, error?.message);
+
       loginInProgressRef.current = false;
 
       navigatingToHomeRef.current = false;

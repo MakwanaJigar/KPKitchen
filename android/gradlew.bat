@@ -75,7 +75,10 @@ goto fail
 :execute
 @rem Setup the command line
 
-
+@rem Suppress JDK "restricted method" warnings from subprocesses (e.g. prefab's
+@rem use of JNA/System.load), which AGP's prefab error-reporting mistakes for a
+@rem build failure (see :app:configureCMakeDebug / GeneratePrefabPackages).
+if not defined JAVA_TOOL_OPTIONS set JAVA_TOOL_OPTIONS=--enable-native-access=ALL-UNNAMED
 
 @rem Execute Gradle
 "%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -jar "%APP_HOME%\gradle\wrapper\gradle-wrapper.jar" %*
