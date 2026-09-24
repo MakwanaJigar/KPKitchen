@@ -943,7 +943,7 @@ const RegisterScreen = ({ navigation }) => {
 
               {/* PERSONAL */}
 
-              <Text style={styles.sectionTitle}>Personal Details</Text>
+              <Text style={styles.sectionTitle}>Personal Details <Text style={styles.labelspam}>*</Text></Text>
 
               <FormInput
                 label="First Name"
@@ -1001,7 +1001,7 @@ const RegisterScreen = ({ navigation }) => {
               />
 
               <ImageUploadField
-                label="Profile Image"
+                label="Profile Image "
                 description="Upload a clear profile photograph"
                 imageUri={profileImage?.uri}
                 circular
@@ -1011,7 +1011,7 @@ const RegisterScreen = ({ navigation }) => {
 
               {/* VEHICLE */}
 
-              <Text style={styles.sectionTitle}>Vehicle Details</Text>
+              <Text style={styles.sectionTitle}>Vehicle Details <Text style={styles.labelspam}>*</Text></Text>
 
               <FormInput
                 label="Vehicle Registration Number"
@@ -1026,7 +1026,7 @@ const RegisterScreen = ({ navigation }) => {
 
               {/* LICENCE */}
 
-              <Text style={styles.sectionTitle}>Driving Licence</Text>
+              <Text style={styles.sectionTitle}>Driving Licence <Text style={styles.labelspam}>*</Text></Text>
 
               <FormInput
                 label="Licence Number"
@@ -1068,10 +1068,10 @@ const RegisterScreen = ({ navigation }) => {
 
               {/* DELIVERY */}
 
-              <Text style={styles.sectionTitle}>Delivery Zone</Text>
+              <Text style={styles.sectionTitle}>Delivery Zone <Text style={styles.labelspam}>*</Text></Text>
 
               <FormInput
-                label="Assigned ZIP / Postcode"
+                label=" Postcode"
                 value={assignedZip}
                 onChangeText={text =>
                   setAssignedZip(text.replace(/[^a-zA-Z0-9,\s-]/g, ''))
@@ -1084,12 +1084,12 @@ const RegisterScreen = ({ navigation }) => {
               />
 
               <Text style={styles.helperText}>
-                Separate multiple ZIP/postcodes with commas.
+                Separate multiple Postcodes with commas.
               </Text>
 
               {/* SECURITY */}
 
-              <Text style={styles.sectionTitle}>Account Security</Text>
+              <Text style={styles.sectionTitle}>Account Security <Text style={styles.labelspam}>*</Text></Text>
 
               {/* PASSWORD */}
 
@@ -1299,6 +1299,15 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#f8f9fb',
+  },
+  labelspam:{
+    color: '#A00B0F',
+
+    fontSize: 13,
+
+    fontWeight: '600',
+
+    marginBottom: 7,
   },
 
   /*

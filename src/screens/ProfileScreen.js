@@ -41,6 +41,10 @@ import {
   launchImageLibrary,
 } from 'react-native-image-picker';
 
+import {
+  removeFcmToken,
+} from '../notifications/NotificationService';
+
 /* =========================================================
  * API
  * ========================================================= */
@@ -1791,6 +1795,8 @@ const ProfileScreen =
             .removeItem(
               AUTH_EMAIL_KEY,
             );
+
+          await removeFcmToken();
 
           setAuthToken(
             '',

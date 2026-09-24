@@ -24,6 +24,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import axios from 'axios';
 
+import {
+  removeFcmToken,
+  syncFcmToken,
+} from '../notifications/NotificationService';
+
 /* =========================================================
  * API
  * ========================================================= */
@@ -208,6 +213,8 @@ const getApprovalMessage = status => {
 export const clearDriverLoginSession = async () => {
   try {
     await AsyncStorage.setItem(AUTH_LOGOUT_FLAG_KEY, '1');
+
+    await removeFcmToken();
 
     await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
     await AsyncStorage.removeItem(AUTH_USER_KEY);
@@ -416,6 +423,8 @@ const LoginScreen = ({ navigation, route }) => {
 
         if (savedToken) {
           axios.defaults.headers.common.Authorization = `Bearer ${savedToken}`;
+
+          syncFcmToken();
 
           if (active && mountedRef.current) {
             setCheckingSession(false);
@@ -739,6 +748,12 @@ const LoginScreen = ({ navigation, route }) => {
       }
 
       axios.defaults.headers.common.Authorization = `Bearer ${storedToken}`;
+
+      /* =============================================
+       * PUSH NOTIFICATION TOKEN
+       * ============================================= */
+
+      syncFcmToken();
 
       if (mountedRef.current) {
         setPassword('');
