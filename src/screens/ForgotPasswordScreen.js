@@ -3,7 +3,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +15,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import AppAlert from '../components/AppAlert';
 
 import axios from 'axios';
 
@@ -152,7 +152,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
     const cleanEmail = email.trim().toLowerCase();
 
     if (!cleanEmail) {
-      Alert.alert(
+      AppAlert.alert(
         'Email Required',
         'Please enter your registered email address.',
       );
@@ -161,7 +161,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
     }
 
     if (!validateEmail(cleanEmail)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      AppAlert.alert('Invalid Email', 'Please enter a valid email address.');
 
       return;
     }
@@ -196,7 +196,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
        * even when the request has failed.
        */
       if (responseData?.status === false || responseData?.success === false) {
-        Alert.alert(
+        AppAlert.alert(
           'Request Failed',
 
           responseData?.message || 'Unable to send the OTP. Please try again.',
@@ -229,7 +229,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
         url: error?.config?.url,
       });
 
-      Alert.alert('Request Failed', getForgotPasswordErrorMessage(error));
+      AppAlert.alert('Request Failed', getForgotPasswordErrorMessage(error));
     } finally {
       setIsLoading(false);
     }

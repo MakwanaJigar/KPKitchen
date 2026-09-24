@@ -6,7 +6,6 @@ import React, {
 
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Pressable,
@@ -17,6 +16,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import AppAlert from '../components/AppAlert';
 
 import {
   CommonActions,
@@ -1307,7 +1307,7 @@ const Order = ({
         ) {
           await clearLoginSession();
 
-          Alert.alert(
+          AppAlert.alert(
             'Session Expired',
 
             'Please login again.',
@@ -1447,7 +1447,7 @@ const Order = ({
         mobile ===
           'Phone not available'
       ) {
-        Alert.alert(
+        AppAlert.alert(
           'Phone Unavailable',
 
           'Customer mobile number was not returned by the order API.',
@@ -1463,7 +1463,7 @@ const Order = ({
         );
 
       if (!cleanPhone) {
-        Alert.alert(
+        AppAlert.alert(
           'Invalid Phone',
 
           'The customer phone number is invalid.',
@@ -1477,7 +1477,7 @@ const Order = ({
           `tel:${cleanPhone}`,
         );
       } catch (error) {
-        Alert.alert(
+        AppAlert.alert(
           'Call Failed',
 
           'Unable to open your phone application.',
@@ -1496,7 +1496,7 @@ const Order = ({
         order.address ===
           'Delivery address not available'
       ) {
-        Alert.alert(
+        AppAlert.alert(
           'Address Unavailable',
 
           'Customer delivery address is not available.',
@@ -1516,7 +1516,7 @@ const Order = ({
           mapUrl,
         );
       } catch (error) {
-        Alert.alert(
+        AppAlert.alert(
           'Navigation Failed',
 
           'Unable to open Google Maps.',

@@ -2,7 +2,6 @@ import React, { useMemo, useState } from 'react';
 
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Modal,
@@ -16,6 +15,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import AppAlert from '../components/AppAlert';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -276,7 +276,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     const mobile = String(order?.mobile ?? '').trim();
 
     if (!mobile || mobile === 'Phone not available') {
-      Alert.alert(
+      AppAlert.alert(
         'Phone Unavailable',
         'Customer mobile number is not available.',
       );
@@ -287,7 +287,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     const cleanPhone = mobile.replace(/[^\d+]/g, '');
 
     if (!cleanPhone) {
-      Alert.alert(
+      AppAlert.alert(
         'Invalid Phone Number',
         'The customer mobile number is invalid.',
       );
@@ -300,7 +300,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     } catch (error) {
       console.log('CALL ERROR:', error);
 
-      Alert.alert('Call Failed', 'Unable to open the phone application.');
+      AppAlert.alert('Call Failed', 'Unable to open the phone application.');
     }
   };
 
@@ -310,7 +310,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
   const handleNavigate = async () => {
     if (!order?.address || order.address === 'Delivery address not available') {
-      Alert.alert(
+      AppAlert.alert(
         'Address Unavailable',
         'Customer delivery address is not available.',
       );
@@ -327,7 +327,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     } catch (error) {
       console.log('MAP ERROR:', error);
 
-      Alert.alert('Navigation Failed', 'Unable to open Google Maps.');
+      AppAlert.alert('Navigation Failed', 'Unable to open Google Maps.');
     }
   };
 
@@ -341,7 +341,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     }
 
     if (response?.errorCode) {
-      Alert.alert(
+      AppAlert.alert(
         'Camera Error',
 
         response?.errorMessage || 'Unable to capture delivery photo.',
@@ -353,7 +353,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     const asset = response?.assets?.[0];
 
     if (!asset?.uri) {
-      Alert.alert('Invalid Photo', 'The captured photo could not be loaded.');
+      AppAlert.alert('Invalid Photo', 'The captured photo could not be loaded.');
 
       return;
     }
@@ -403,7 +403,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     const granted = await requestCameraPermission();
 
     if (!granted) {
-      Alert.alert(
+      AppAlert.alert(
         'Permission Required',
         'Please allow camera permission to take delivery proof.',
       );
@@ -434,7 +434,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
         } catch (error) {
           console.log('CAMERA ERROR:', error);
 
-          Alert.alert(
+          AppAlert.alert(
             'Camera Error',
 
             error?.message || 'Unable to open the camera.',
@@ -451,7 +451,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
    * ======================================================= */
 
   const handleRemoveImage = () => {
-    Alert.alert(
+    AppAlert.alert(
       'Remove Photo',
 
       'Are you sure you want to remove this delivery photo?',
@@ -688,7 +688,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
 
   const handleMarkDelivered = async () => {
     if (!selectedImage?.uri) {
-      Alert.alert(
+      AppAlert.alert(
         'Delivery Photo Required',
 
         'Please take a delivery photo before marking this order as delivered.',
@@ -786,7 +786,7 @@ const OrderDetailsScreen = ({ navigation, route }) => {
     } catch (error) {
       console.log('DELIVERY SUBMIT ERROR:', error);
 
-      Alert.alert(
+      AppAlert.alert(
         'Delivery Failed',
 
         error?.message ||

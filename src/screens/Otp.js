@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -15,6 +14,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import AppAlert from '../components/AppAlert';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
@@ -190,7 +190,7 @@ const OTP = ({ navigation, route }) => {
     const cleanOtp = otp.trim();
 
     if (!email) {
-      Alert.alert(
+      AppAlert.alert(
         'Email Missing',
         'Your email address was not received. Please return to the forgot-password screen and try again.',
         [
@@ -208,7 +208,7 @@ const OTP = ({ navigation, route }) => {
     }
 
     if (!cleanOtp) {
-      Alert.alert(
+      AppAlert.alert(
         'OTP Required',
         'Please enter the OTP sent to your registered email address.',
       );
@@ -217,7 +217,7 @@ const OTP = ({ navigation, route }) => {
     }
 
     if (cleanOtp.length !== OTP_LENGTH) {
-      Alert.alert(
+      AppAlert.alert(
         'Invalid OTP',
         `Please enter the complete ${OTP_LENGTH}-digit OTP.`,
       );
@@ -226,7 +226,7 @@ const OTP = ({ navigation, route }) => {
     }
 
     if (!/^\d{6}$/.test(cleanOtp)) {
-      Alert.alert('Invalid OTP', 'The OTP must contain only numbers.');
+      AppAlert.alert('Invalid OTP', 'The OTP must contain only numbers.');
 
       return;
     }
@@ -268,7 +268,7 @@ const OTP = ({ navigation, route }) => {
        * success or status is false.
        */
       if (responseData?.status === false || responseData?.success === false) {
-        Alert.alert(
+        AppAlert.alert(
           'Verification Failed',
 
           responseData?.message || 'The OTP is invalid or has expired.',
@@ -318,7 +318,7 @@ const OTP = ({ navigation, route }) => {
         url: error?.config?.url,
       });
 
-      Alert.alert('Verification Failed', getOtpErrorMessage(error));
+      AppAlert.alert('Verification Failed', getOtpErrorMessage(error));
     } finally {
       setIsLoading(false);
     }

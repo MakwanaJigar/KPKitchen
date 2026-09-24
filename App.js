@@ -5,6 +5,8 @@ import {SafeAreaProvider} from 'react-native-safe-area-context';
 
 import AppNavigator from './src/navigation/AppNavigator';
 
+import {AppAlertHost} from './src/components/AppAlert';
+
 import {
   createNotificationChannel,
   flushPendingNotification,
@@ -32,6 +34,7 @@ const App = () => {
         onReady={flushPendingNotification}
         onStateChange={flushPendingNotification}>
         <AppNavigator />
+        <AppAlertHost />
       </NavigationContainer>
     </SafeAreaProvider>
   );

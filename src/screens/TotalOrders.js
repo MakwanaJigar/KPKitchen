@@ -7,7 +7,6 @@ import React, {
 
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Pressable,
@@ -17,6 +16,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import AppAlert from '../components/AppAlert';
 
 import {
   SafeAreaView,
@@ -858,7 +858,7 @@ const TotalOrders = ({
         order.mobile ===
           'Phone not available'
       ) {
-        Alert.alert(
+        AppAlert.alert(
           'Phone Unavailable',
 
           'Customer phone number is not available.',
@@ -878,7 +878,7 @@ const TotalOrders = ({
           `tel:${cleanPhone}`,
         );
       } catch (error) {
-        Alert.alert(
+        AppAlert.alert(
           'Call Failed',
 
           'Unable to open phone application.',

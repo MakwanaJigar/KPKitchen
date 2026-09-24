@@ -1769,13 +1769,24 @@ const HomeScreen = ({
    * RECENT ORDERS
    * ======================================================= */
 
+  /*
+   * Delivered orders are hidden from
+   * Today's Deliveries; only pending
+   * orders are shown here.
+   */
   const recentOrders =
     useMemo(
       () =>
-        orders.slice(
-          0,
-          2,
-        ),
+        orders
+          .filter(
+            order =>
+              order.filterStatus !==
+              'Delivered',
+          )
+          .slice(
+            0,
+            2,
+          ),
       [
         orders,
       ],
@@ -2411,7 +2422,7 @@ const HomeScreen = ({
                     styles.noRecentOrderTitle
                   }
                 >
-                  No Recent Orders
+                  No Pending Deliveries
                 </Text>
 
                 <Text
@@ -2419,7 +2430,7 @@ const HomeScreen = ({
                     styles.noRecentOrderText
                   }
                 >
-                  Your assigned orders will appear here.
+                  New assigned orders will appear here.
                 </Text>
               </View>
             )}

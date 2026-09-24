@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Easing,
   Image,
@@ -18,10 +17,9 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import AppAlert from '../components/AppAlert';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-import axios from 'axios';
 
 import { launchImageLibrary } from 'react-native-image-picker';
 
@@ -33,6 +31,18 @@ const REGISTER_API_URL =
   'https://replete-software.com/projects/kp_admin/api/driver/register';
 
 const SUCCESS_POPUP_DURATION = 3500;
+
+const VEHICLE_TYPES = ['Car', 'Motorbike', 'Scooter', 'Bicycle', 'Van'];
+
+/* =========================================================
+ * REQUIRED LABEL
+ * ========================================================= */
+
+const RequiredLabel = ({ label }) => (
+  <Text style={styles.inputLabel}>
+    {label} <Text style={styles.requiredStar}>*</Text>
+  </Text>
+);
 
 /* =========================================================
  * NORMAL INPUT
@@ -52,7 +62,7 @@ const FormInput = ({
 }) => {
   return (
     <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
+      <RequiredLabel label={label} />
 
       <View
         style={[styles.inputContainer, multiline && styles.multilineContainer]}
@@ -93,7 +103,7 @@ const ImageUploadField = ({
 }) => {
   return (
     <View style={styles.uploadGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
+      <RequiredLabel label={label} />
 
       <Pressable
         disabled={disabled}
@@ -159,45 +169,40 @@ const RegisterScreen = ({ navigation }) => {
    * PERSONAL
    * ======================================================= */
 
-  const [firstName, setFirstName] = useState('');
-
-  const [lastName, setLastName] = useState('');
+  const [name, setName] = useState('');
 
   const [phone, setPhone] = useState('');
 
   const [email, setEmail] = useState('');
 
-  const [address, setAddress] = useState('');
+  /* =======================================================
+   * ADDRESS
+   * ======================================================= */
+
+  const [streetAddress, setStreetAddress] = useState('');
+
+  const [city, setCity] = useState('');
+
+  const [assignedZip, setAssignedZip] = useState('');
 
   /* =======================================================
    * VEHICLE
    * ======================================================= */
 
-  const [vehicleRegNo, setVehicleRegNo] = useState('');
+  const [vehicleNumber, setVehicleNumber] = useState('');
+
+  const [vehicleType, setVehicleType] = useState('');
+
+  const [vehicleRegistrationImage, setVehicleRegistrationImage] =
+    useState(null);
 
   /* =======================================================
    * LICENCE
    * ======================================================= */
 
-  const [licenseNo, setLicenseNo] = useState('');
-
-  const [licenseExpiry, setLicenseExpiry] = useState('');
-
   const [licenseFront, setLicenseFront] = useState(null);
 
   const [licenseBack, setLicenseBack] = useState(null);
-
-  /* =======================================================
-   * DELIVERY
-   * ======================================================= */
-
-  const [assignedZip, setAssignedZip] = useState('');
-
-  /* =======================================================
-   * PROFILE
-   * ======================================================= */
-
-  const [profileImage, setProfileImage] = useState(null);
 
   /* =======================================================
    * PASSWORD
@@ -259,49 +264,6 @@ const RegisterScreen = ({ navigation }) => {
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
   /* =======================================================
-   * DATE
-   * ======================================================= */
-
-  const validateDate = value => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      return false;
-    }
-
-    const [year, month, day] = value.split('-').map(Number);
-
-    const date = new Date(year, month - 1, day);
-
-    return (
-      date.getFullYear() === year &&
-      date.getMonth() === month - 1 &&
-      date.getDate() === day
-    );
-  };
-
-  /* =======================================================
-   * LICENCE EXPIRY INPUT
-   * ======================================================= */
-
-  const handleExpiryChange = text => {
-    const digits = text.replace(/[^0-9]/g, '').slice(0, 8);
-
-    let formatted = digits;
-
-    if (digits.length > 4) {
-      formatted = `${digits.slice(0, 4)}-${digits.slice(4)}`;
-    }
-
-    if (digits.length > 6) {
-      formatted = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(
-        6,
-        8,
-      )}`;
-    }
-
-    setLicenseExpiry(formatted);
-  };
-
-  /* =======================================================
    * IMAGE
    * ======================================================= */
 
@@ -314,7 +276,7 @@ const RegisterScreen = ({ navigation }) => {
       const result = await launchImageLibrary({
         mediaType: 'photo',
 
-        includeBase64: true,
+        includeBase64: false,
 
         quality: 0.7,
 
@@ -330,7 +292,7 @@ const RegisterScreen = ({ navigation }) => {
       }
 
       if (result?.errorCode) {
-        Alert.alert(
+        AppAlert.alert(
           'Image Error',
           result?.errorMessage || 'Unable to select image.',
         );
@@ -340,29 +302,26 @@ const RegisterScreen = ({ navigation }) => {
 
       const asset = result?.assets?.[0];
 
-      if (!asset?.base64) {
-        Alert.alert(
-          'Image Error',
-          'Unable to convert the selected image to Base64.',
-        );
+      if (!asset?.uri) {
+        AppAlert.alert('Image Error', 'The selected image could not be loaded.');
 
         return;
       }
 
       const mimeType = asset?.type || 'image/jpeg';
 
+      const extension = mimeType.split('/')[1] || 'jpg';
+
       const imageData = {
-        uri: asset?.uri,
+        uri: asset.uri,
 
         type: mimeType,
 
-        fileName: asset?.fileName,
-
-        base64: `data:${mimeType};base64,${asset.base64}`,
+        fileName: asset?.fileName || `${type}-${Date.now()}.${extension}`,
       };
 
-      if (type === 'profile') {
-        setProfileImage(imageData);
+      if (type === 'vehicle') {
+        setVehicleRegistrationImage(imageData);
       }
 
       if (type === 'front') {
@@ -375,7 +334,7 @@ const RegisterScreen = ({ navigation }) => {
     } catch (error) {
       console.log('IMAGE PICKER ERROR:', error);
 
-      Alert.alert('Image Error', error?.message || 'Unable to select image.');
+      AppAlert.alert('Image Error', error?.message || 'Unable to select image.');
     }
   };
 
@@ -462,23 +421,19 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
-    const cleanFirstName = firstName.trim();
+    const cleanName = name.trim().replace(/\s+/g, ' ');
 
-    const cleanLastName = lastName.trim();
+    const cleanPhone = phone.trim().replace(/\s+/g, ' ');
 
-    const fullName = `${cleanFirstName} ${cleanLastName}`.trim();
-
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    const phoneDigits = cleanPhone.replace(/[^0-9]/g, '');
 
     const cleanEmail = email.trim().toLowerCase();
 
-    const cleanAddress = address.trim();
+    const cleanStreetAddress = streetAddress.trim();
 
-    const cleanVehicle = vehicleRegNo.trim().toUpperCase();
+    const cleanCity = city.trim();
 
-    const cleanLicense = licenseNo.trim().toUpperCase();
-
-    const cleanExpiry = licenseExpiry.trim();
+    const cleanVehicleNumber = vehicleNumber.trim().toUpperCase();
 
     const cleanAssignedZip = assignedZip
       .split(',')
@@ -490,103 +445,89 @@ const RegisterScreen = ({ navigation }) => {
      * VALIDATION
      * ================================================= */
 
-    if (!cleanFirstName) {
-      Alert.alert('First Name Required', 'Please enter your first name.');
-
-      return;
-    }
-
-    if (!cleanLastName) {
-      Alert.alert('Last Name Required', 'Please enter your last name.');
-
-      return;
-    }
-
-    if (!cleanPhone) {
-      Alert.alert('Phone Required', 'Please enter your phone number.');
-
-      return;
-    }
-
-    if (cleanPhone.length < 10) {
-      Alert.alert('Invalid Phone', 'Please enter a valid phone number.');
+    if (!cleanName) {
+      AppAlert.alert('Full Name Required', 'Please enter your full name.');
 
       return;
     }
 
     if (!cleanEmail) {
-      Alert.alert('Email Required', 'Please enter your email address.');
+      AppAlert.alert('Email Required', 'Please enter your email address.');
 
       return;
     }
 
     if (!validateEmail(cleanEmail)) {
-      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      AppAlert.alert('Invalid Email', 'Please enter a valid email address.');
 
       return;
     }
 
-    if (!cleanAddress) {
-      Alert.alert('Address Required', 'Please enter your residential address.');
+    if (!phoneDigits) {
+      AppAlert.alert('Phone Required', 'Please enter your phone number.');
 
       return;
     }
 
-    if (!cleanVehicle) {
-      Alert.alert(
-        'Vehicle Registration Required',
+    if (phoneDigits.length < 9) {
+      AppAlert.alert('Invalid Phone', 'Please enter a valid phone number.');
+
+      return;
+    }
+
+    if (!cleanStreetAddress) {
+      AppAlert.alert(
+        'Street Address Required',
+        'Please enter your street address.',
+      );
+
+      return;
+    }
+
+    if (!cleanCity) {
+      AppAlert.alert('City Required', 'Please enter your city or suburb.');
+
+      return;
+    }
+
+    if (!cleanAssignedZip) {
+      AppAlert.alert(
+        'Postcode Required',
+        'Please enter your assigned postcode.',
+      );
+
+      return;
+    }
+
+    if (!cleanVehicleNumber) {
+      AppAlert.alert(
+        'Vehicle Number Required',
         'Please enter your vehicle registration number.',
       );
 
       return;
     }
 
-    if (!cleanLicense) {
-      Alert.alert(
-        'Licence Number Required',
-        'Please enter your licence number.',
+    if (!vehicleType) {
+      AppAlert.alert(
+        'Vehicle Type Required',
+        'Please select your vehicle type.',
       );
 
       return;
     }
 
-    if (!cleanExpiry) {
-      Alert.alert(
-        'Licence Expiry Required',
-        'Please enter the licence expiry date.',
+    if (!vehicleRegistrationImage?.uri) {
+      AppAlert.alert(
+        'Vehicle Registration Required',
+        'Please upload your vehicle registration image.',
       );
 
       return;
     }
 
-    if (!validateDate(cleanExpiry)) {
-      Alert.alert('Invalid Expiry Date', 'Use YYYY-MM-DD format.');
-
-      return;
-    }
-
-    const expiry = new Date(`${cleanExpiry}T23:59:59`);
-
-    if (expiry.getTime() < Date.now()) {
-      Alert.alert(
-        'Licence Expired',
-        'The licence expiry date must be in the future.',
-      );
-
-      return;
-    }
-
-    if (!cleanAssignedZip) {
-      Alert.alert(
-        'ZIP Required',
-        'Please enter at least one assigned ZIP/postcode.',
-      );
-
-      return;
-    }
-
-    if (!licenseFront?.base64) {
-      Alert.alert(
+    if (!licenseFront?.uri) {
+      AppAlert.alert(
         'Licence Front Required',
         'Please upload the front side of your driving licence.',
       );
@@ -594,8 +535,8 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
-    if (!licenseBack?.base64) {
-      Alert.alert(
+    if (!licenseBack?.uri) {
+      AppAlert.alert(
         'Licence Back Required',
         'Please upload the back side of your driving licence.',
       );
@@ -603,23 +544,14 @@ const RegisterScreen = ({ navigation }) => {
       return;
     }
 
-    if (!profileImage?.base64) {
-      Alert.alert(
-        'Profile Image Required',
-        'Please upload your profile image.',
-      );
-
-      return;
-    }
-
     if (!password) {
-      Alert.alert('Password Required', 'Please enter a password.');
+      AppAlert.alert('Password Required', 'Please enter a password.');
 
       return;
     }
 
     if (password.length < 8) {
-      Alert.alert(
+      AppAlert.alert(
         'Password Too Short',
         'Password must contain at least 8 characters.',
       );
@@ -628,13 +560,13 @@ const RegisterScreen = ({ navigation }) => {
     }
 
     if (!passwordConfirmation) {
-      Alert.alert('Confirm Password', 'Please confirm your password.');
+      AppAlert.alert('Confirm Password', 'Please confirm your password.');
 
       return;
     }
 
     if (password !== passwordConfirmation) {
-      Alert.alert(
+      AppAlert.alert(
         'Password Mismatch',
         'Password and confirm password must match.',
       );
@@ -643,42 +575,50 @@ const RegisterScreen = ({ navigation }) => {
     }
 
     /* =================================================
-     * REQUEST
+     * REQUEST (multipart/form-data)
+     *
+     * Do not manually set multipart Content-Type.
+     * React Native will add the multipart boundary.
      * ================================================= */
 
-    const requestData = {
-      first_name: cleanFirstName,
+    const toFile = image => ({
+      uri: image.uri,
 
-      last_name: cleanLastName,
+      type: image.type || 'image/jpeg',
 
-      name: fullName,
+      name: image.fileName,
+    });
 
-      phone: cleanPhone,
+    const formData = new FormData();
 
-      email: cleanEmail,
+    formData.append('name', cleanName);
 
-      password,
+    formData.append('email', cleanEmail);
 
-      password_confirmation: passwordConfirmation,
+    formData.append('phone', cleanPhone);
 
-      confirm_password: passwordConfirmation,
+    formData.append('password', password);
 
-      address: cleanAddress,
+    formData.append('password_confirmation', passwordConfirmation);
 
-      vehicle_reg_no: cleanVehicle,
+    formData.append('vehicle_number', cleanVehicleNumber);
 
-      license_no: cleanLicense,
+    formData.append('vehicle_type', vehicleType);
 
-      license_expiry: cleanExpiry,
+    formData.append('street_address', cleanStreetAddress);
 
-      assigned_zip: cleanAssignedZip,
+    formData.append('city', cleanCity);
 
-      license_copy_front: licenseFront.base64,
+    formData.append('assigned_zip', cleanAssignedZip);
 
-      license_copy_back: licenseBack.base64,
+    formData.append('driver_license_front', toFile(licenseFront));
 
-      profile_image: profileImage.base64,
-    };
+    formData.append('driver_license_back', toFile(licenseBack));
+
+    formData.append(
+      'vehicle_registration_image',
+      toFile(vehicleRegistrationImage),
+    );
 
     try {
       setLoading(true);
@@ -686,73 +626,97 @@ const RegisterScreen = ({ navigation }) => {
       console.log('REGISTER API:', REGISTER_API_URL);
 
       console.log('REGISTER PAYLOAD:', {
-        first_name: requestData.first_name,
+        name: cleanName,
 
-        last_name: requestData.last_name,
+        email: cleanEmail,
 
-        name: requestData.name,
-
-        phone: requestData.phone,
-
-        email: requestData.email,
-
-        address: requestData.address,
-
-        vehicle_reg_no: requestData.vehicle_reg_no,
-
-        license_no: requestData.license_no,
-
-        license_expiry: requestData.license_expiry,
-
-        assigned_zip: requestData.assigned_zip,
+        phone: cleanPhone,
 
         password: '[HIDDEN]',
 
-        password_confirmation: '[HIDDEN]',
+        vehicle_number: cleanVehicleNumber,
 
-        license_copy_front: '[BASE64 IMAGE]',
+        vehicle_type: vehicleType,
 
-        license_copy_back: '[BASE64 IMAGE]',
+        street_address: cleanStreetAddress,
 
-        profile_image: '[BASE64 IMAGE]',
+        city: cleanCity,
+
+        assigned_zip: cleanAssignedZip,
+
+        driver_license_front: '[IMAGE FILE]',
+
+        driver_license_back: '[IMAGE FILE]',
+
+        vehicle_registration_image: '[IMAGE FILE]',
       });
 
-      const response = await axios.post(
-        REGISTER_API_URL,
+      const controller = new AbortController();
 
-        requestData,
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-        {
+      let response;
+
+      try {
+        response = await fetch(REGISTER_API_URL, {
+          method: 'POST',
+
           headers: {
             Accept: 'application/json',
-
-            'Content-Type': 'application/json',
           },
 
-          timeout: 60000,
+          body: formData,
 
-          maxBodyLength: Infinity,
+          signal: controller.signal,
+        });
+      } catch (networkError) {
+        if (networkError?.name === 'AbortError') {
+          networkError.code = 'ECONNABORTED';
+        }
 
-          maxContentLength: Infinity,
-        },
-      );
+        throw networkError;
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
-      console.log('REGISTER RESPONSE:', response?.data);
+      const responseText = await response.text();
 
-      if (
-        response?.data?.success === false ||
-        response?.data?.status === false
-      ) {
-        Alert.alert(
+      let responseData = null;
+
+      try {
+        responseData = responseText ? JSON.parse(responseText) : null;
+      } catch (parseError) {
+        responseData = { message: responseText };
+      }
+
+      console.log('REGISTER RESPONSE:', response.status, responseData);
+
+      if (!response.ok) {
+        const requestError = new Error(
+          responseData?.message ||
+            `Request failed with status ${response.status}`,
+        );
+
+        requestError.response = {
+          status: response.status,
+
+          data: responseData,
+        };
+
+        throw requestError;
+      }
+
+      if (responseData?.success === false || responseData?.status === false) {
+        AppAlert.alert(
           'Registration Failed',
-          response?.data?.message || 'Unable to register your account.',
+          responseData?.message || 'Unable to register your account.',
         );
 
         return;
       }
 
-      const message = response?.data?.message
-        ? `${response.data.message}\n\nYour registration is pending admin approval. You can login after the administrator approves your account.`
+      const message = responseData?.message
+        ? `${responseData.message}\n\nYour registration is pending admin approval. You can login after the administrator approves your account.`
         : 'Your driver registration has been submitted successfully. Your account is pending admin approval. You can login after the administrator approves your account.';
 
       showSuccess(cleanEmail, message);
@@ -763,7 +727,7 @@ const RegisterScreen = ({ navigation }) => {
 
       console.log('REGISTER ERROR:', error?.message);
 
-      Alert.alert('Registration Failed', getRegistrationError(error));
+      AppAlert.alert('Registration Failed', getRegistrationError(error));
     } finally {
       setLoading(false);
     }
@@ -943,38 +907,16 @@ const RegisterScreen = ({ navigation }) => {
 
               {/* PERSONAL */}
 
-              <Text style={styles.sectionTitle}>Personal Details <Text style={styles.labelspam}>*</Text></Text>
+              <Text style={styles.sectionTitle}>Personal Details</Text>
 
               <FormInput
-                label="First Name"
-                value={firstName}
-                onChangeText={setFirstName}
-                placeholder="Dwight"
+                label="Full Name"
+                value={name}
+                onChangeText={setName}
+                placeholder="John Driver"
                 icon={require('../assets/user-dark.png')}
                 autoCapitalize="words"
-                maxLength={50}
-                editable={!loading}
-              />
-
-              <FormInput
-                label="Last Name"
-                value={lastName}
-                onChangeText={setLastName}
-                placeholder="Schrute"
-                icon={require('../assets/user-dark.png')}
-                autoCapitalize="words"
-                maxLength={50}
-                editable={!loading}
-              />
-
-              <FormInput
-                label="Mobile Number"
-                value={phone}
-                onChangeText={text => setPhone(text.replace(/[^0-9]/g, ''))}
-                placeholder="0499112233"
-                icon={require('../assets/phone-call.png')}
-                keyboardType="phone-pad"
-                maxLength={15}
+                maxLength={100}
                 editable={!loading}
               />
 
@@ -982,7 +924,7 @@ const RegisterScreen = ({ navigation }) => {
                 label="Email Address"
                 value={email}
                 onChangeText={setEmail}
-                placeholder="driver.dwight@example.com"
+                placeholder="driver@example.com"
                 icon={require('../assets/mail.png')}
                 keyboardType="email-address"
                 maxLength={120}
@@ -990,68 +932,120 @@ const RegisterScreen = ({ navigation }) => {
               />
 
               <FormInput
-                label="Address"
-                value={address}
-                onChangeText={setAddress}
-                placeholder="Schrute Farms, Adelaide SA 5000"
-                icon={require('../assets/user-dark.png')}
+                label="Mobile Number"
+                value={phone}
+                onChangeText={text => setPhone(text.replace(/[^0-9+\s]/g, ''))}
+                placeholder="+61 411 987 654"
+                icon={require('../assets/phone-call.png')}
+                keyboardType="phone-pad"
+                maxLength={20}
+                editable={!loading}
+              />
+
+              {/* ADDRESS */}
+
+              <Text style={styles.sectionTitle}>Address</Text>
+
+              <FormInput
+                label="Street Address"
+                value={streetAddress}
+                onChangeText={setStreetAddress}
+                placeholder="Unit 12, 45 Flinders Lane"
+                icon={require('../assets/home-dark.png')}
                 autoCapitalize="words"
+                maxLength={200}
                 multiline
                 editable={!loading}
               />
 
-              <ImageUploadField
-                label="Profile Image "
-                description="Upload a clear profile photograph"
-                imageUri={profileImage?.uri}
-                circular
-                disabled={loading}
-                onPress={() => chooseImage('profile')}
+              <FormInput
+                label="City / Suburb"
+                value={city}
+                onChangeText={setCity}
+                placeholder="Richmond"
+                icon={require('../assets/home-dark.png')}
+                autoCapitalize="words"
+                maxLength={80}
+                editable={!loading}
+              />
+
+              <FormInput
+                label="Assigned Postcode"
+                value={assignedZip}
+                onChangeText={text =>
+                  setAssignedZip(text.replace(/[^a-zA-Z0-9,\s-]/g, ''))
+                }
+                placeholder="3121"
+                icon={require('../assets/home-dark.png')}
+                keyboardType="number-pad"
+                maxLength={100}
+                editable={!loading}
               />
 
               {/* VEHICLE */}
 
-              <Text style={styles.sectionTitle}>Vehicle Details <Text style={styles.labelspam}>*</Text></Text>
+              <Text style={styles.sectionTitle}>Vehicle Details</Text>
 
               <FormInput
-                label="Vehicle Registration Number"
-                value={vehicleRegNo}
-                onChangeText={text => setVehicleRegNo(text.toUpperCase())}
-                placeholder="SA-BEET-01"
+                label="Vehicle Number"
+                value={vehicleNumber}
+                onChangeText={text => setVehicleNumber(text.toUpperCase())}
+                placeholder="VIC-8899"
                 icon={require('../assets/delivery-bike-dark.png')}
                 autoCapitalize="characters"
                 maxLength={30}
                 editable={!loading}
               />
 
-              {/* LICENCE */}
+              <View style={styles.inputGroup}>
+                <RequiredLabel label="Vehicle Type" />
 
-              <Text style={styles.sectionTitle}>Driving Licence <Text style={styles.labelspam}>*</Text></Text>
+                <View style={styles.vehicleTypeRow}>
+                  {VEHICLE_TYPES.map(type => {
+                    const selected = vehicleType === type;
 
-              <FormInput
-                label="Licence Number"
-                value={licenseNo}
-                onChangeText={text => setLicenseNo(text.toUpperCase())}
-                placeholder="DL-990011"
-                icon={require('../assets/user-dark.png')}
-                autoCapitalize="characters"
-                maxLength={40}
-                editable={!loading}
-              />
+                    return (
+                      <Pressable
+                        key={type}
+                        disabled={loading}
+                        onPress={() => setVehicleType(type)}
+                        style={({ pressed }) => [
+                          styles.vehicleTypeChip,
 
-              <FormInput
-                label="Licence Expiry"
-                value={licenseExpiry}
-                onChangeText={handleExpiryChange}
-                placeholder="YYYY-MM-DD"
-                icon={require('../assets/user-dark.png')}
-                keyboardType="number-pad"
-                maxLength={10}
-                editable={!loading}
-              />
+                          selected && styles.vehicleTypeChipSelected,
+
+                          pressed && !loading && styles.uploadPressed,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.vehicleTypeText,
+
+                            selected && styles.vehicleTypeTextSelected,
+                          ]}
+                        >
+                          {type}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
 
               <ImageUploadField
-                label="Licence Copy - Front"
+                label="Vehicle Registration Image"
+                description="Upload a clear photo of your vehicle registration"
+                imageUri={vehicleRegistrationImage?.uri}
+                disabled={loading}
+                onPress={() => chooseImage('vehicle')}
+              />
+
+              {/* LICENCE */}
+
+              <Text style={styles.sectionTitle}>Driving Licence</Text>
+
+              <ImageUploadField
+                label="Driver Licence - Front"
                 description="Upload the front side of your driving licence"
                 imageUri={licenseFront?.uri}
                 disabled={loading}
@@ -1059,42 +1053,21 @@ const RegisterScreen = ({ navigation }) => {
               />
 
               <ImageUploadField
-                label="Licence Copy - Back"
+                label="Driver Licence - Back"
                 description="Upload the back side of your driving licence"
                 imageUri={licenseBack?.uri}
                 disabled={loading}
                 onPress={() => chooseImage('back')}
               />
 
-              {/* DELIVERY */}
-
-              <Text style={styles.sectionTitle}>Delivery Zone <Text style={styles.labelspam}>*</Text></Text>
-
-              <FormInput
-                label=" Postcode"
-                value={assignedZip}
-                onChangeText={text =>
-                  setAssignedZip(text.replace(/[^a-zA-Z0-9,\s-]/g, ''))
-                }
-                placeholder="5000, 5001"
-                icon={require('../assets/user-dark.png')}
-                autoCapitalize="characters"
-                maxLength={100}
-                editable={!loading}
-              />
-
-              <Text style={styles.helperText}>
-                Separate multiple Postcodes with commas.
-              </Text>
-
               {/* SECURITY */}
 
-              <Text style={styles.sectionTitle}>Account Security <Text style={styles.labelspam}>*</Text></Text>
+              <Text style={styles.sectionTitle}>Account Security</Text>
 
               {/* PASSWORD */}
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Password</Text>
+                <RequiredLabel label="Password" />
 
                 <View style={styles.inputContainer}>
                   <View pointerEvents="none" style={styles.inputIconContainer}>
@@ -1137,7 +1110,7 @@ const RegisterScreen = ({ navigation }) => {
               {/* CONFIRM PASSWORD */}
 
               <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Confirm Password</Text>
+                <RequiredLabel label="Confirm Password" />
 
                 <View style={styles.inputContainer}>
                   <View pointerEvents="none" style={styles.inputIconContainer}>
@@ -1300,14 +1273,42 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f9fb',
   },
-  labelspam:{
-    color: '#A00B0F',
+  requiredStar: {
+    color: '#d00018',
+    fontWeight: '900',
+  },
 
-    fontSize: 13,
+  vehicleTypeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
 
-    fontWeight: '600',
+  vehicleTypeChip: {
+    minHeight: 42,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
-    marginBottom: 7,
+  vehicleTypeChipSelected: {
+    borderColor: '#d00018',
+    backgroundColor: '#fff1f2',
+  },
+
+  vehicleTypeText: {
+    color: '#4b5563',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  vehicleTypeTextSelected: {
+    color: '#d00018',
+    fontWeight: '900',
   },
 
   /*

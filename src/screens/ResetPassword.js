@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -16,6 +15,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import AppAlert from '../components/AppAlert';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -260,7 +260,7 @@ const ResetPassword = ({ navigation, route }) => {
      * ============================================= */
 
     if (!email) {
-      Alert.alert(
+      AppAlert.alert(
         'Email Missing',
 
         'Your email address was not received. Please restart the forgot-password process.',
@@ -282,7 +282,7 @@ const ResetPassword = ({ navigation, route }) => {
      * ============================================= */
 
     if (!otp && !resetToken) {
-      Alert.alert(
+      AppAlert.alert(
         'Verification Missing',
 
         'OTP verification information was not received. Please request a new OTP.',
@@ -306,7 +306,7 @@ const ResetPassword = ({ navigation, route }) => {
      * ============================================= */
 
     if (!cleanPassword) {
-      Alert.alert(
+      AppAlert.alert(
         'Password Required',
 
         'Please enter your new password.',
@@ -316,7 +316,7 @@ const ResetPassword = ({ navigation, route }) => {
     }
 
     if (cleanPassword.length < 8) {
-      Alert.alert(
+      AppAlert.alert(
         'Weak Password',
 
         'Your password must contain at least eight characters.',
@@ -330,7 +330,7 @@ const ResetPassword = ({ navigation, route }) => {
      * ============================================= */
 
     if (!cleanConfirmPassword) {
-      Alert.alert(
+      AppAlert.alert(
         'Confirm Password',
 
         'Please confirm your new password.',
@@ -340,7 +340,7 @@ const ResetPassword = ({ navigation, route }) => {
     }
 
     if (cleanPassword !== cleanConfirmPassword) {
-      Alert.alert(
+      AppAlert.alert(
         'Passwords Do Not Match',
 
         'The new password and confirmation password must be the same.',
@@ -422,7 +422,7 @@ const ResetPassword = ({ navigation, route }) => {
       const responseData = response.data;
 
       if (responseData?.status === false || responseData?.success === false) {
-        Alert.alert(
+        AppAlert.alert(
           'Reset Failed',
 
           responseData?.message || 'Unable to reset your password.',
@@ -447,7 +447,7 @@ const ResetPassword = ({ navigation, route }) => {
 
       console.log('==============================================');
 
-      Alert.alert(
+      AppAlert.alert(
         'Reset Failed',
 
         getResetPasswordErrorMessage(error),

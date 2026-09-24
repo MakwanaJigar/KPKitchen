@@ -7,7 +7,6 @@ import React, {
 
 import {
   ActivityIndicator,
-  Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -22,6 +21,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import AppAlert from '../components/AppAlert';
 
 import {
   CommonActions,
@@ -2359,7 +2359,7 @@ const ProfileScreen =
           if (
             result.errorCode
           ) {
-            Alert.alert(
+            AppAlert.alert(
               'Image Error',
 
               result
@@ -2377,7 +2377,7 @@ const ProfileScreen =
           if (
             !asset?.uri
           ) {
-            Alert.alert(
+            AppAlert.alert(
               'Image Error',
 
               'Unable to read the selected image.',
@@ -2436,7 +2436,7 @@ const ProfileScreen =
             error,
           );
 
-          Alert.alert(
+          AppAlert.alert(
             'Image Error',
 
             'Unable to select licence image.',
@@ -2873,7 +2873,7 @@ const ProfileScreen =
             false,
           );
 
-          Alert.alert(
+          AppAlert.alert(
             'Profile Updated',
 
             response?.data
@@ -2941,7 +2941,7 @@ const ProfileScreen =
         if (
           !image
         ) {
-          Alert.alert(
+          AppAlert.alert(
             'Document Unavailable',
 
             `${title} has not been uploaded yet.`,
@@ -2982,7 +2982,7 @@ const ProfileScreen =
           candidates.length ===
           0
         ) {
-          Alert.alert(
+          AppAlert.alert(
             'Document Unavailable',
 
             'Unable to determine the licence image URL.',
