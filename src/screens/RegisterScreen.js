@@ -599,7 +599,7 @@ const RegisterScreen = ({ navigation }) => {
 
     formData.append('password', password);
 
-    formData.append('password_confirmation', passwordConfirmation);
+    formData.append('confirm_password', passwordConfirmation);
 
     formData.append('vehicle_number', cleanVehicleNumber);
 

@@ -1,9 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   ActivityIndicator,
@@ -29,21 +24,15 @@ import {
   useNavigation,
 } from '@react-navigation/native';
 
-import {
-  SafeAreaView,
-} from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import axios from 'axios';
 
-import {
-  launchImageLibrary,
-} from 'react-native-image-picker';
+import { launchImageLibrary } from 'react-native-image-picker';
 
-import {
-  removeFcmToken,
-} from '../notifications/NotificationService';
+import { removeFcmToken } from '../notifications/NotificationService';
 
 /* =========================================================
  * API
@@ -58,27 +47,21 @@ const PROFILE_EDIT_API_URL =
 const LOGOUT_API_URL =
   'https://replete-software.com/projects/kp_admin/api/driver/logout';
 
-const PROJECT_BASE_URL =
-  'https://replete-software.com/projects/kp_admin';
+const PROJECT_BASE_URL = 'https://replete-software.com/projects/kp_admin';
 
-const PUBLIC_BASE_URL =
-  'https://replete-software.com/projects/kp_admin/public';
+const PUBLIC_BASE_URL = 'https://replete-software.com/projects/kp_admin/public';
 
 /* =========================================================
  * STORAGE
  * ========================================================= */
 
-const AUTH_TOKEN_KEY =
-  '@kp_kitchen_driver_token';
+const AUTH_TOKEN_KEY = '@kp_kitchen_driver_token';
 
-const AUTH_USER_KEY =
-  '@kp_kitchen_driver_user';
+const AUTH_USER_KEY = '@kp_kitchen_driver_user';
 
-const AUTH_EMAIL_KEY =
-  '@kp_kitchen_driver_email';
+const AUTH_EMAIL_KEY = '@kp_kitchen_driver_email';
 
-const AUTH_LOGOUT_FLAG_KEY =
-  '@kp_kitchen_driver_logged_out';
+const AUTH_LOGOUT_FLAG_KEY = '@kp_kitchen_driver_logged_out';
 
 /* =========================================================
  * DEFAULT PROFILE
@@ -157,275 +140,177 @@ const EMPTY_EDIT_FORM = {
 };
 
 /* =========================================================
- * FALLBACK IMAGE
+ * PROFILE INITIAL
  * ========================================================= */
 
-const DEFAULT_PROFILE_IMAGE =
-  'https://images.unsplash.com/photo-1560250097-0b93528c311a';
+const getProfileInitial = (...values) => {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+
+    if (text) {
+      return text.charAt(0).toUpperCase();
+    }
+  }
+
+  return 'D';
+};
 
 /* =========================================================
  * IMAGE URL CANDIDATES
  * ========================================================= */
 
-const getImageUrlCandidates =
-  value => {
-    if (!value) {
-      return [];
-    }
+const getImageUrlCandidates = value => {
+  if (!value) {
+    return [];
+  }
 
-    let original =
-      String(value)
-        .trim()
-        .replace(
-          /\\/g,
-          '/',
-        );
+  let original = String(value).trim().replace(/\\/g, '/');
 
-    if (!original) {
-      return [];
-    }
+  if (!original) {
+    return [];
+  }
 
-    /*
-     * Local device images.
-     */
+  /*
+   * Local device images.
+   */
 
-    if (
-      original.startsWith(
-        'file://',
-      ) ||
-      original.startsWith(
-        'content://',
-      ) ||
-      original.startsWith(
-        'ph://',
-      )
-    ) {
-      return [
-        original,
-      ];
-    }
+  if (
+    original.startsWith('file://') ||
+    original.startsWith('content://') ||
+    original.startsWith('ph://')
+  ) {
+    return [original];
+  }
 
-    const candidates =
-      [];
+  const candidates = [];
 
-    /*
-     * If backend already gives complete URL,
-     * try it first.
-     */
+  /*
+   * If backend already gives complete URL,
+   * try it first.
+   */
 
-    if (
-      original.startsWith(
-        'https://',
-      ) ||
-      original.startsWith(
-        'http://',
-      )
-    ) {
-      candidates.push(
-        original,
-      );
-    }
+  if (original.startsWith('https://') || original.startsWith('http://')) {
+    candidates.push(original);
+  }
 
-    /*
-     * Convert absolute domain URL to relative path
-     * so we can build fallback URLs.
-     */
+  /*
+   * Convert absolute domain URL to relative path
+   * so we can build fallback URLs.
+   */
 
-    let path =
-      original;
+  let path = original;
 
-    path =
-      path.replace(
-        /^https?:\/\/replete-software\.com\//i,
-        '',
-      );
+  path = path.replace(/^https?:\/\/replete-software\.com\//i, '');
 
-    path =
-      path.replace(
-        /^\/+/,
-        '',
-      );
+  path = path.replace(/^\/+/, '');
 
-    /*
-     * Remove project directory if already present.
-     */
+  /*
+   * Remove project directory if already present.
+   */
 
-    if (
-      path.startsWith(
-        'projects/kp_admin/',
-      )
-    ) {
-      path =
-        path.substring(
-          'projects/kp_admin/'
-            .length,
-        );
-    }
+  if (path.startsWith('projects/kp_admin/')) {
+    path = path.substring('projects/kp_admin/'.length);
+  }
 
-    /*
-     * Laravel physical storage path:
-     *
-     * storage/app/public/license/test.jpg
-     *
-     * Public equivalent should normally be:
-     *
-     * public/storage/license/test.jpg
-     */
+  /*
+   * Laravel physical storage path:
+   *
+   * storage/app/public/license/test.jpg
+   *
+   * Public equivalent should normally be:
+   *
+   * public/storage/license/test.jpg
+   */
 
-    if (
-      path.startsWith(
-        'storage/app/public/',
-      )
-    ) {
-      path =
-        path.replace(
-          'storage/app/public/',
-          'storage/',
-        );
-    }
+  if (path.startsWith('storage/app/public/')) {
+    path = path.replace('storage/app/public/', 'storage/');
+  }
 
-    /*
-     * If API gives public/storage/...
-     */
+  /*
+   * If API gives public/storage/...
+   */
 
-    if (
-      path.startsWith(
-        'public/',
-      )
-    ) {
-      candidates.push(
-        `${PROJECT_BASE_URL}/${path}`,
-      );
+  if (path.startsWith('public/')) {
+    candidates.push(`${PROJECT_BASE_URL}/${path}`);
 
-      path =
-        path.substring(
-          'public/'.length,
-        );
-    }
+    path = path.substring('public/'.length);
+  }
 
-    /*
-     * storage/....
-     */
+  /*
+   * storage/....
+   */
 
-    if (
-      path.startsWith(
-        'storage/',
-      )
-    ) {
-      candidates.push(
-        `${PUBLIC_BASE_URL}/${path}`,
-      );
+  if (path.startsWith('storage/')) {
+    candidates.push(`${PUBLIC_BASE_URL}/${path}`);
 
-      candidates.push(
-        `${PROJECT_BASE_URL}/${path}`,
-      );
-    }
+    candidates.push(`${PROJECT_BASE_URL}/${path}`);
+  }
 
-    /*
-     * uploads/....
-     */
+  /*
+   * uploads/....
+   */
 
-    if (
-      path.startsWith(
-        'uploads/',
-      )
-    ) {
-      candidates.push(
-        `${PUBLIC_BASE_URL}/${path}`,
-      );
+  if (path.startsWith('uploads/')) {
+    candidates.push(`${PUBLIC_BASE_URL}/${path}`);
 
-      candidates.push(
-        `${PROJECT_BASE_URL}/${path}`,
-      );
-    }
+    candidates.push(`${PROJECT_BASE_URL}/${path}`);
+  }
 
-    /*
-     * Generic possibilities.
-     */
+  /*
+   * Generic possibilities.
+   */
 
-    candidates.push(
-      `${PUBLIC_BASE_URL}/${path}`,
-    );
+  candidates.push(`${PUBLIC_BASE_URL}/${path}`);
 
-    candidates.push(
-      `${PROJECT_BASE_URL}/${path}`,
-    );
+  candidates.push(`${PROJECT_BASE_URL}/${path}`);
 
-    /*
-     * Laravel storage fallback.
-     *
-     * Example backend:
-     *
-     * drivers/licenses/front.jpg
-     *
-     * Real public URL:
-     *
-     * public/storage/drivers/licenses/front.jpg
-     */
+  /*
+   * Laravel storage fallback.
+   *
+   * Example backend:
+   *
+   * drivers/licenses/front.jpg
+   *
+   * Real public URL:
+   *
+   * public/storage/drivers/licenses/front.jpg
+   */
 
-    if (
-      !path.startsWith(
-        'storage/',
-      )
-    ) {
-      candidates.push(
-        `${PUBLIC_BASE_URL}/storage/${path}`,
-      );
-    }
+  if (!path.startsWith('storage/')) {
+    candidates.push(`${PUBLIC_BASE_URL}/storage/${path}`);
+  }
 
-    /*
-     * Sometimes uploads are stored under
-     * public/uploads.
-     */
+  /*
+   * Sometimes uploads are stored under
+   * public/uploads.
+   */
 
-    if (
-      !path.startsWith(
-        'uploads/',
-      )
-    ) {
-      candidates.push(
-        `${PUBLIC_BASE_URL}/uploads/${path}`,
-      );
-    }
+  if (!path.startsWith('uploads/')) {
+    candidates.push(`${PUBLIC_BASE_URL}/uploads/${path}`);
+  }
 
-    /*
-     * Remove duplicate URLs.
-     */
+  /*
+   * Remove duplicate URLs.
+   */
 
-    return [
-      ...new Set(
-        candidates,
-      ),
-    ];
-  };
+  return [...new Set(candidates)];
+};
 
 /* =========================================================
  * IMAGE SOURCE
  * ========================================================= */
 
-const createImageSource = (
-  uri,
-  token,
-) => {
+const createImageSource = (uri, token) => {
   if (!uri) {
     return null;
   }
 
   const isLocal =
-    uri.startsWith(
-      'file://',
-    ) ||
-    uri.startsWith(
-      'content://',
-    ) ||
-    uri.startsWith(
-      'ph://',
-    );
+    uri.startsWith('file://') ||
+    uri.startsWith('content://') ||
+    uri.startsWith('ph://');
 
-  if (
-    isLocal ||
-    !token
-  ) {
+  if (isLocal || !token) {
     return {
       uri,
     };
@@ -442,11 +327,9 @@ const createImageSource = (
     uri,
 
     headers: {
-      Accept:
-        'image/*',
+      Accept: 'image/*',
 
-      Authorization:
-        `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
     },
   };
 };
@@ -455,36 +338,17 @@ const createImageSource = (
  * GET DISPLAY VALUE
  * ========================================================= */
 
-const getDisplayValue = (
-  ...values
-) => {
-  for (
-    const value
-    of values
-  ) {
-    if (
-      value === null ||
-      value === undefined ||
-      value === ''
-    ) {
+const getDisplayValue = (...values) => {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') {
       continue;
     }
 
-    if (
-      typeof value ===
-        'string' ||
-      typeof value ===
-        'number'
-    ) {
-      return String(
-        value,
-      ).trim();
+    if (typeof value === 'string' || typeof value === 'number') {
+      return String(value).trim();
     }
 
-    if (
-      typeof value ===
-        'object'
-    ) {
+    if (typeof value === 'object') {
       const objectValue =
         value?.name ??
         value?.title ??
@@ -494,16 +358,11 @@ const getDisplayValue = (
         value?.path;
 
       if (
-        objectValue !==
-          null &&
-        objectValue !==
-          undefined &&
-        objectValue !==
-          ''
+        objectValue !== null &&
+        objectValue !== undefined &&
+        objectValue !== ''
       ) {
-        return String(
-          objectValue,
-        ).trim();
+        return String(objectValue).trim();
       }
     }
   }
@@ -515,591 +374,344 @@ const getDisplayValue = (
  * API ERROR
  * ========================================================= */
 
-const getApiErrorMessage = (
-  error,
-  fallback =
-    'Something went wrong.',
-) => {
-  const data =
-    error?.response?.data;
+const getApiErrorMessage = (error, fallback = 'Something went wrong.') => {
+  const data = error?.response?.data;
 
-  if (
-    data?.message
-  ) {
-    return String(
-      data.message,
-    );
+  if (data?.message) {
+    return String(data.message);
   }
 
-  if (
-    data?.error
-  ) {
-    return String(
-      data.error,
-    );
+  if (data?.error) {
+    return String(data.error);
   }
 
-  if (
-    data?.errors &&
-    typeof data.errors ===
-      'object'
-  ) {
-    const keys =
-      Object.keys(
-        data.errors,
-      );
+  if (data?.errors && typeof data.errors === 'object') {
+    const keys = Object.keys(data.errors);
 
-    if (
-      keys.length > 0
-    ) {
-      const firstError =
-        data.errors[
-          keys[0]
-        ];
+    if (keys.length > 0) {
+      const firstError = data.errors[keys[0]];
 
-      if (
-        Array.isArray(
-          firstError,
-        )
-      ) {
-        return String(
-          firstError[0] ??
-            fallback,
-        );
+      if (Array.isArray(firstError)) {
+        return String(firstError[0] ?? fallback);
       }
 
-      if (
-        firstError
-      ) {
-        return String(
-          firstError,
-        );
+      if (firstError) {
+        return String(firstError);
       }
     }
   }
 
-  return (
-    error?.message ||
-    fallback
-  );
+  return error?.message || fallback;
 };
 
 /* =========================================================
  * EXTRACT PROFILE
  * ========================================================= */
 
-const extractProfileData =
-  responseData => {
-    return (
-      responseData?.driver ||
-      responseData
-        ?.data
-        ?.driver ||
-      responseData?.profile ||
-      responseData
-        ?.data
-        ?.profile ||
-      responseData?.user ||
-      responseData
-        ?.data
-        ?.user ||
-      responseData?.data ||
-      responseData ||
-      {}
-    );
-  };
+const extractProfileData = responseData => {
+  return (
+    responseData?.driver ||
+    responseData?.data?.driver ||
+    responseData?.profile ||
+    responseData?.data?.profile ||
+    responseData?.user ||
+    responseData?.data?.user ||
+    responseData?.data ||
+    responseData ||
+    {}
+  );
+};
 
 /* =========================================================
  * NORMALIZE PROFILE
  * ========================================================= */
 
-const normalizeProfileData =
-  rawProfile => {
-    const firstName =
-      getDisplayValue(
-        rawProfile
-          ?.first_name,
-
-        rawProfile
-          ?.firstName,
-      );
-
-    const lastName =
-      getDisplayValue(
-        rawProfile
-          ?.last_name,
-
-        rawProfile
-          ?.lastName,
-      );
-
-    const combinedName =
-      `${firstName} ${lastName}`
-        .trim();
-
-    /*
-     * IMPORTANT:
-     * Keep licence image path EXACTLY
-     * as returned from API.
-     *
-     * We resolve possible URLs later.
-     */
-
-    const licenseFront =
-      getDisplayValue(
-        rawProfile
-          ?.license_copy_front,
-
-        rawProfile
-          ?.licence_copy_front,
-
-        rawProfile
-          ?.license_front,
-
-        rawProfile
-          ?.license_front_url,
-      );
-
-    const licenseBack =
-      getDisplayValue(
-        rawProfile
-          ?.license_copy_back,
-
-        rawProfile
-          ?.licence_copy_back,
-
-        rawProfile
-          ?.license_back,
-
-        rawProfile
-          ?.license_back_url,
-      );
-
-    console.log(
-      'RAW LICENCE FRONT FROM API:',
-      licenseFront,
-    );
-
-    console.log(
-      'RAW LICENCE BACK FROM API:',
-      licenseBack,
-    );
-
-    console.log(
-      'FRONT URL CANDIDATES:',
-      getImageUrlCandidates(
-        licenseFront,
-      ),
-    );
-
-    console.log(
-      'BACK URL CANDIDATES:',
-      getImageUrlCandidates(
-        licenseBack,
-      ),
-    );
+const normalizeProfileData = rawProfile => {
+  const firstName = getDisplayValue(
+    rawProfile?.first_name,
 
-    return {
-      id:
-        rawProfile?.id ??
-        rawProfile
-          ?.driver_id ??
-        null,
+    rawProfile?.firstName,
+  );
 
-      name:
-        getDisplayValue(
-          rawProfile?.name,
+  const lastName = getDisplayValue(
+    rawProfile?.last_name,
 
-          rawProfile
-            ?.full_name,
+    rawProfile?.lastName,
+  );
 
-          rawProfile
-            ?.driver_name,
+  const combinedName = `${firstName} ${lastName}`.trim();
 
-          combinedName,
-        ),
+  /*
+   * IMPORTANT:
+   * Keep licence image path EXACTLY
+   * as returned from API.
+   *
+   * We resolve possible URLs later.
+   */
 
-      firstName,
+  const licenseFront = getDisplayValue(
+    rawProfile?.license_copy_front,
 
-      lastName,
+    rawProfile?.licence_copy_front,
 
-      email:
-        getDisplayValue(
-          rawProfile?.email,
+    rawProfile?.license_front,
 
-          rawProfile?.mail,
-        ),
+    rawProfile?.license_front_url,
+  );
 
-      phone:
-        getDisplayValue(
-          rawProfile?.phone,
+  const licenseBack = getDisplayValue(
+    rawProfile?.license_copy_back,
 
-          rawProfile?.mobile,
+    rawProfile?.licence_copy_back,
 
-          rawProfile
-            ?.mobile_number,
+    rawProfile?.license_back,
 
-          rawProfile
-            ?.phone_number,
-        ),
+    rawProfile?.license_back_url,
+  );
 
-      address:
-        getDisplayValue(
-          rawProfile
-            ?.address,
+  console.log('RAW LICENCE FRONT FROM API:', licenseFront);
 
-          rawProfile
-            ?.residential_address,
+  console.log('RAW LICENCE BACK FROM API:', licenseBack);
 
-          rawProfile
-            ?.driver_address,
-        ),
+  console.log('FRONT URL CANDIDATES:', getImageUrlCandidates(licenseFront));
 
-      licenseNumber:
-        getDisplayValue(
-          rawProfile
-            ?.license_no,
+  console.log('BACK URL CANDIDATES:', getImageUrlCandidates(licenseBack));
 
-          rawProfile
-            ?.license_number,
+  return {
+    id: rawProfile?.id ?? rawProfile?.driver_id ?? null,
 
-          rawProfile
-            ?.licence_number,
+    name: getDisplayValue(
+      rawProfile?.name,
 
-          rawProfile
-            ?.licenseNumber,
-        ),
+      rawProfile?.full_name,
 
-      licenseExpiry:
-        getDisplayValue(
-          rawProfile
-            ?.license_expiry,
+      rawProfile?.driver_name,
 
-          rawProfile
-            ?.licence_expiry,
+      combinedName,
+    ),
 
-          rawProfile
-            ?.licenseExpiry,
-        ),
+    firstName,
 
-      licenseFront,
+    lastName,
 
-      licenseBack,
+    email: getDisplayValue(
+      rawProfile?.email,
 
-      profileImage:
-        getDisplayValue(
-          rawProfile
-            ?.profile_image,
+      rawProfile?.mail,
+    ),
 
-          rawProfile
-            ?.profile_photo,
+    phone: getDisplayValue(
+      rawProfile?.phone,
 
-          rawProfile?.avatar,
+      rawProfile?.mobile,
 
-          rawProfile?.image,
+      rawProfile?.mobile_number,
 
-          rawProfile?.photo,
-        ),
+      rawProfile?.phone_number,
+    ),
 
-      vehicleNumber:
-        getDisplayValue(
-          rawProfile
-            ?.vehicle_reg_no,
+    address: getDisplayValue(
+      rawProfile?.address,
 
-          rawProfile
-            ?.vehicle_number,
+      rawProfile?.residential_address,
 
-          rawProfile
-            ?.vehicleNumber,
+      rawProfile?.driver_address,
+    ),
 
-          rawProfile
-            ?.vehicle_no,
-        ),
+    licenseNumber: getDisplayValue(
+      rawProfile?.license_no,
 
-      assignedZip:
-        getDisplayValue(
-          rawProfile
-            ?.assigned_zip,
+      rawProfile?.license_number,
 
-          rawProfile?.zipcode,
+      rawProfile?.licence_number,
 
-          rawProfile
-            ?.zip_code,
+      rawProfile?.licenseNumber,
+    ),
 
-          rawProfile
-            ?.postal_code,
+    licenseExpiry: getDisplayValue(
+      rawProfile?.license_expiry,
 
-          rawProfile?.pincode,
-        ),
+      rawProfile?.licence_expiry,
 
-      assignedArea:
-        getDisplayValue(
-          rawProfile?.area,
+      rawProfile?.licenseExpiry,
+    ),
 
-          rawProfile
-            ?.assigned_area,
+    licenseFront,
 
-          rawProfile
-            ?.delivery_area,
+    licenseBack,
 
-          rawProfile?.cluster,
+    profileImage: getDisplayValue(
+      rawProfile?.profile_image,
 
-          rawProfile
-            ?.assigned_zip,
-        ),
+      rawProfile?.profile_photo,
 
-      status:
-        getDisplayValue(
-          rawProfile?.status,
+      rawProfile?.avatar,
 
-          rawProfile
-            ?.approval_status,
+      rawProfile?.image,
 
-          rawProfile
-            ?.account_status,
-        ),
+      rawProfile?.photo,
+    ),
 
-      userType:
-        getDisplayValue(
-          rawProfile
-            ?.user_type,
+    vehicleNumber: getDisplayValue(
+      rawProfile?.vehicle_reg_no,
 
-          rawProfile?.type,
+      rawProfile?.vehicle_number,
 
-          'driver',
-        ),
+      rawProfile?.vehicleNumber,
 
-      totalAssignedOrders:
-        Number(
-          rawProfile
-            ?.total_assigned_orders ??
-          rawProfile
-            ?.total_orders ??
-          0,
-        ) || 0,
+      rawProfile?.vehicle_no,
+    ),
 
-      activeShipments:
-        Number(
-          rawProfile
-            ?.active_shipments ??
-          rawProfile
-            ?.active_orders ??
-          0,
-        ) || 0,
+    assignedZip: getDisplayValue(
+      rawProfile?.assigned_zip,
 
-      recentDeliveries:
-        Array.isArray(
-          rawProfile
-            ?.recent_deliveries,
-        )
-          ? rawProfile
-              .recent_deliveries
-          : [],
-    };
+      rawProfile?.zipcode,
+
+      rawProfile?.zip_code,
+
+      rawProfile?.postal_code,
+
+      rawProfile?.pincode,
+    ),
+
+    assignedArea: getDisplayValue(
+      rawProfile?.area,
+
+      rawProfile?.assigned_area,
+
+      rawProfile?.delivery_area,
+
+      rawProfile?.cluster,
+
+      rawProfile?.assigned_zip,
+    ),
+
+    status: getDisplayValue(
+      rawProfile?.status,
+
+      rawProfile?.approval_status,
+
+      rawProfile?.account_status,
+    ),
+
+    userType: getDisplayValue(
+      rawProfile?.user_type,
+
+      rawProfile?.type,
+
+      'driver',
+    ),
+
+    totalAssignedOrders:
+      Number(
+        rawProfile?.total_assigned_orders ?? rawProfile?.total_orders ?? 0,
+      ) || 0,
+
+    activeShipments:
+      Number(rawProfile?.active_shipments ?? rawProfile?.active_orders ?? 0) ||
+      0,
+
+    recentDeliveries: Array.isArray(rawProfile?.recent_deliveries)
+      ? rawProfile.recent_deliveries
+      : [],
   };
+};
 
 /* =========================================================
  * FORMAT DATE
  * ========================================================= */
 
-const formatDate =
-  value => {
-    if (
-      !value
-    ) {
-      return 'Not available';
-    }
+const formatDate = value => {
+  if (!value) {
+    return 'Not available';
+  }
 
-    const date =
-      new Date(
-        value,
-      );
+  const date = new Date(value);
 
-    if (
-      Number.isNaN(
-        date.getTime(),
-      )
-    ) {
-      return String(
-        value,
-      );
-    }
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
 
-    return date
-      .toLocaleDateString(
-        'en-AU',
-        {
-          day:
-            '2-digit',
+  return date.toLocaleDateString('en-AU', {
+    day: '2-digit',
 
-          month:
-            'short',
+    month: 'short',
 
-          year:
-            'numeric',
-        },
-      );
-  };
+    year: 'numeric',
+  });
+};
 
 /* =========================================================
  * STATUS
  * ========================================================= */
 
-const getStatusInfo =
-  value => {
-    const status =
-      String(
-        value ??
-        '',
-      )
-        .trim()
-        .toLowerCase();
+const getStatusInfo = value => {
+  const status = String(value ?? '')
+    .trim()
+    .toLowerCase();
 
-    if (
-      [
-        'active',
-        'approved',
-        'verified',
-      ].includes(
-        status,
-      )
-    ) {
-      return {
-        label:
-          value ||
-          'Active',
-
-        color:
-          '#168044',
-
-        background:
-          '#e9f8ef',
-
-        dot:
-          '#32b768',
-      };
-    }
-
-    if (
-      [
-        'pending',
-        'pending_approval',
-        'awaiting_approval',
-      ].includes(
-        status,
-      )
-    ) {
-      return {
-        label:
-          value ||
-          'Pending',
-
-        color:
-          '#9a6700',
-
-        background:
-          '#fff6df',
-
-        dot:
-          '#d99b16',
-      };
-    }
-
-    if (
-      [
-        'inactive',
-        'rejected',
-        'suspended',
-        'blocked',
-      ].includes(
-        status,
-      )
-    ) {
-      return {
-        label:
-          value ||
-          'Inactive',
-
-        color:
-          '#a9090d',
-
-        background:
-          '#fff0f1',
-
-        dot:
-          '#d00018',
-      };
-    }
-
+  if (['active', 'approved', 'verified'].includes(status)) {
     return {
-      label:
-        value ||
-        'Unknown',
+      label: value || 'Active',
 
-      color:
-        '#596273',
+      color: '#168044',
 
-      background:
-        '#eef1f5',
+      background: '#e9f8ef',
 
-      dot:
-        '#7c8493',
+      dot: '#32b768',
     };
+  }
+
+  if (['pending', 'pending_approval', 'awaiting_approval'].includes(status)) {
+    return {
+      label: value || 'Pending',
+
+      color: '#9a6700',
+
+      background: '#fff6df',
+
+      dot: '#d99b16',
+    };
+  }
+
+  if (['inactive', 'rejected', 'suspended', 'blocked'].includes(status)) {
+    return {
+      label: value || 'Inactive',
+
+      color: '#a9090d',
+
+      background: '#fff0f1',
+
+      dot: '#d00018',
+    };
+  }
+
+  return {
+    label: value || 'Unknown',
+
+    color: '#596273',
+
+    background: '#eef1f5',
+
+    dot: '#7c8493',
   };
+};
 
 /* =========================================================
  * PROFILE INFO ROW
  * ========================================================= */
 
-const ProfileInfoRow = ({
-  icon,
-  label,
-  value,
-  multiline = false,
-}) => {
+const ProfileInfoRow = ({ icon, label, value, multiline = false }) => {
   return (
-    <View
-      style={
-        styles.profileInfoRow
-      }
-    >
-      <View
-        style={
-          styles.profileInfoIcon
-        }
-      >
-        <Text
-          style={
-            styles.profileInfoIconText
-          }
-        >
-          {icon}
-        </Text>
+    <View style={styles.profileInfoRow}>
+      <View style={styles.profileInfoIcon}>
+        <Text style={styles.profileInfoIconText}>{icon}</Text>
       </View>
 
-      <View
-        style={
-          styles.profileInfoContent
-        }
-      >
-        <Text
-          style={
-            styles.infoLabel
-          }
-        >
-          {label}
-        </Text>
+      <View style={styles.profileInfoContent}>
+        <Text style={styles.infoLabel}>{label}</Text>
 
-        <Text
-          numberOfLines={
-            multiline
-              ? 4
-              : 1
-          }
-          style={
-            styles.profileInfoValue
-          }
-        >
+        <Text numberOfLines={multiline ? 4 : 1} style={styles.profileInfoValue}>
           {value}
         </Text>
       </View>
@@ -1111,206 +723,138 @@ const ProfileInfoRow = ({
  * DOCUMENT CARD
  * ========================================================= */
 
-const DocumentCard = ({
-  title,
-  subtitle,
-  imageValue,
-  authToken,
-  onPress,
-}) => {
-  const candidates =
-    getImageUrlCandidates(
-      imageValue,
+const DocumentCard = ({ title, subtitle, imageValue, authToken, onPress }) => {
+  const candidates = getImageUrlCandidates(imageValue);
+
+  const [candidateIndex, setCandidateIndex] = useState(0);
+
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setCandidateIndex(0);
+
+    setImageFailed(false);
+  }, [imageValue]);
+
+  const currentImage = candidates[candidateIndex] || '';
+
+  const handleImageError = event => {
+    console.log(
+      `${title} THUMBNAIL FAILED:`,
+      currentImage,
+
+      event?.nativeEvent?.error,
     );
 
-  const [
-    candidateIndex,
-    setCandidateIndex,
-  ] =
-    useState(0);
+    if (candidateIndex < candidates.length - 1) {
+      const nextIndex = candidateIndex + 1;
 
-  const [
-    imageFailed,
-    setImageFailed,
-  ] =
-    useState(false);
+      console.log(`${title} TRYING NEXT URL:`, candidates[nextIndex]);
 
-  useEffect(
-    () => {
-      setCandidateIndex(
-        0,
-      );
-
-      setImageFailed(
-        false,
-      );
-    },
-    [
-      imageValue,
-    ],
-  );
-
-  const currentImage =
-    candidates[
-      candidateIndex
-    ] ||
-    '';
-
-  const handleImageError =
-    event => {
-      console.log(
-        `${title} THUMBNAIL FAILED:`,
-        currentImage,
-
-        event
-          ?.nativeEvent
-          ?.error,
-      );
-
-      if (
-        candidateIndex <
-        candidates.length -
-          1
-      ) {
-        const nextIndex =
-          candidateIndex +
-          1;
-
-        console.log(
-          `${title} TRYING NEXT URL:`,
-          candidates[
-            nextIndex
-          ],
-        );
-
-        setCandidateIndex(
-          nextIndex,
-        );
-      } else {
-        setImageFailed(
-          true,
-        );
-      }
-    };
+      setCandidateIndex(nextIndex);
+    } else {
+      setImageFailed(true);
+    }
+  };
 
   return (
     <Pressable
-      disabled={
-        !imageValue
-      }
-      onPress={
-        onPress
-      }
-      style={({
-        pressed,
-      }) => [
+      disabled={!imageValue}
+      onPress={onPress}
+      style={({ pressed }) => [
         styles.documentCard,
 
-        pressed &&
-          styles.cardPressed,
+        pressed && styles.cardPressed,
 
-        !imageValue &&
-          styles
-            .documentCardUnavailable,
+        !imageValue && styles.documentCardUnavailable,
       ]}
     >
-      <View
-        style={
-          styles.documentPreview
-        }
-      >
-        {!!currentImage &&
-        !imageFailed ? (
+      <View style={styles.documentPreview}>
+        {!!currentImage && !imageFailed ? (
           <Image
-            key={
-              currentImage
-            }
-            source={
-              createImageSource(
-                currentImage,
-                authToken,
-              )
-            }
-            style={
-              styles.documentImage
-            }
+            key={currentImage}
+            source={createImageSource(currentImage, authToken)}
+            style={styles.documentImage}
             resizeMode="cover"
             onLoad={() => {
-              console.log(
-                `${title} THUMBNAIL LOADED:`,
-                currentImage,
-              );
+              console.log(`${title} THUMBNAIL LOADED:`, currentImage);
             }}
-            onError={
-              handleImageError
-            }
+            onError={handleImageError}
           />
         ) : (
-          <View
-            style={
-              styles.documentPlaceholderBox
-            }
-          >
-            <View
-              style={
-                styles.documentIconCircle
-              }
-            >
-              <Text
-                style={
-                  styles.documentIconText
-                }
-              >
-                ID
-              </Text>
+          <View style={styles.documentPlaceholderBox}>
+            <View style={styles.documentIconCircle}>
+              <Text style={styles.documentIconText}>ID</Text>
             </View>
           </View>
         )}
       </View>
 
-      <View
-        style={
-          styles.documentContent
-        }
-      >
-        <Text
-          style={
-            styles.documentTitle
-          }
-        >
-          {title}
-        </Text>
+      <View style={styles.documentContent}>
+        <Text style={styles.documentTitle}>{title}</Text>
 
-        <Text
-          numberOfLines={
-            2
-          }
-          style={
-            styles.documentSubtitle
-          }
-        >
-          {imageValue
-            ? subtitle
-            : 'Document not uploaded'}
+        <Text numberOfLines={2} style={styles.documentSubtitle}>
+          {imageValue ? subtitle : 'Document not uploaded'}
         </Text>
       </View>
 
       {!!imageValue && (
-        <View
-          style={
-            styles.documentArrowBox
-          }
-        >
-          <Text
-            style={
-              styles.documentArrow
-            }
-          >
-            ›
-          </Text>
+        <View style={styles.documentArrowBox}>
+          <Text style={styles.documentArrow}>›</Text>
         </View>
       )}
     </Pressable>
+  );
+};
+
+/* =========================================================
+ * PROFILE AVATAR
+ * ========================================================= */
+
+const ProfileAvatar = ({ imageValue, initial, authToken }) => {
+  const candidates = getImageUrlCandidates(imageValue);
+
+  const [candidateIndex, setCandidateIndex] = useState(0);
+
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setCandidateIndex(0);
+
+    setImageFailed(false);
+  }, [imageValue]);
+
+  const currentImage = candidates[candidateIndex] || '';
+
+  const handleImageError = () => {
+    if (candidateIndex < candidates.length - 1) {
+      setCandidateIndex(previous => previous + 1);
+    } else {
+      setImageFailed(true);
+    }
+  };
+
+  /*
+   * No uploaded photo (or it failed to load):
+   * show the user's first initial.
+   */
+
+  if (!currentImage || imageFailed) {
+    return (
+      <View style={[styles.headerProfileImage, styles.headerProfileInitialBox]}>
+        <Text style={styles.headerProfileInitialText}>{initial}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      key={currentImage}
+      source={createImageSource(currentImage, authToken)}
+      style={styles.headerProfileImage}
+      resizeMode="cover"
+      onError={handleImageError}
+    />
   );
 };
 
@@ -1323,72 +867,31 @@ const EditField = ({
   value,
   onChangeText,
   placeholder,
-  keyboardType =
-    'default',
+  keyboardType = 'default',
   multiline = false,
-  secureTextEntry =
-    false,
-  autoCapitalize =
-    'sentences',
+  secureTextEntry = false,
+  autoCapitalize = 'sentences',
   required = false,
 }) => {
   return (
-    <View
-      style={
-        styles.editField
-      }
-    >
-      <Text
-        style={
-          styles.editFieldLabel
-        }
-      >
+    <View style={styles.editField}>
+      <Text style={styles.editFieldLabel}>
         {label}
 
-        {required ? (
-          <Text
-            style={
-              styles.requiredText
-            }
-          >
-            {' '}*
-          </Text>
-        ) : null}
+        {required ? <Text style={styles.requiredText}> *</Text> : null}
       </Text>
 
       <TextInput
-        value={
-          value
-        }
-        onChangeText={
-          onChangeText
-        }
-        placeholder={
-          placeholder
-        }
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
         placeholderTextColor="#a0a5ad"
-        keyboardType={
-          keyboardType
-        }
-        autoCapitalize={
-          autoCapitalize
-        }
-        autoCorrect={
-          false
-        }
-        multiline={
-          multiline
-        }
-        secureTextEntry={
-          secureTextEntry
-        }
-        style={[
-          styles.editInput,
-
-          multiline &&
-            styles
-              .editInputMultiline,
-        ]}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={false}
+        multiline={multiline}
+        secureTextEntry={secureTextEntry}
+        style={[styles.editInput, multiline && styles.editInputMultiline]}
       />
     </View>
   );
@@ -1406,166 +909,68 @@ const EditLicenseImage = ({
   onPress,
   onReset,
 }) => {
-  const candidates =
-    getImageUrlCandidates(
-      imageUri,
-    );
+  const candidates = getImageUrlCandidates(imageUri);
 
-  const [
-    candidateIndex,
-    setCandidateIndex,
-  ] =
-    useState(0);
+  const [candidateIndex, setCandidateIndex] = useState(0);
 
-  const [
-    failed,
-    setFailed,
-  ] =
-    useState(false);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(
-    () => {
-      setCandidateIndex(
-        0,
-      );
+  useEffect(() => {
+    setCandidateIndex(0);
 
-      setFailed(
-        false,
-      );
-    },
-    [
-      imageUri,
-    ],
-  );
+    setFailed(false);
+  }, [imageUri]);
 
-  const currentUri =
-    candidates[
-      candidateIndex
-    ] ||
-    '';
+  const currentUri = candidates[candidateIndex] || '';
 
-  const handleError =
-    () => {
-      if (
-        candidateIndex <
-        candidates.length -
-          1
-      ) {
-        setCandidateIndex(
-          previous =>
-            previous + 1,
-        );
-      } else {
-        setFailed(
-          true,
-        );
-      }
-    };
+  const handleError = () => {
+    if (candidateIndex < candidates.length - 1) {
+      setCandidateIndex(previous => previous + 1);
+    } else {
+      setFailed(true);
+    }
+  };
 
   return (
-    <View
-      style={
-        styles.editImageSection
-      }
-    >
-      <Text
-        style={
-          styles.editFieldLabel
-        }
-      >
-        {title}
-      </Text>
+    <View style={styles.editImageSection}>
+      <Text style={styles.editFieldLabel}>{title}</Text>
 
       <Pressable
-        onPress={
-          onPress
-        }
-        style={({
-          pressed,
-        }) => [
+        onPress={onPress}
+        style={({ pressed }) => [
           styles.editImagePicker,
 
-          pressed &&
-            styles.cardPressed,
+          pressed && styles.cardPressed,
         ]}
       >
-        {!!currentUri &&
-        !failed ? (
+        {!!currentUri && !failed ? (
           <Image
-            key={
-              currentUri
-            }
-            source={
-              createImageSource(
-                currentUri,
-                authToken,
-              )
-            }
-            style={
-              styles.editImagePreview
-            }
+            key={currentUri}
+            source={createImageSource(currentUri, authToken)}
+            style={styles.editImagePreview}
             resizeMode="contain"
-            onError={
-              handleError
-            }
+            onError={handleError}
           />
         ) : (
-          <View
-            style={
-              styles.editImagePlaceholder
-            }
-          >
-            <Text
-              style={
-                styles.editImagePlaceholderIcon
-              }
-            >
-              +
-            </Text>
+          <View style={styles.editImagePlaceholder}>
+            <Text style={styles.editImagePlaceholderIcon}>+</Text>
 
-            <Text
-              style={
-                styles.editImagePlaceholderTitle
-              }
-            >
+            <Text style={styles.editImagePlaceholderTitle}>
               Select Licence Photo
             </Text>
           </View>
         )}
 
-        <View
-          style={
-            styles.editImageBottom
-          }
-        >
-          <Text
-            style={
-              styles.editImageButtonText
-            }
-          >
-            {imageUri
-              ? 'Change Photo'
-              : 'Choose Photo'}
+        <View style={styles.editImageBottom}>
+          <Text style={styles.editImageButtonText}>
+            {imageUri ? 'Change Photo' : 'Choose Photo'}
           </Text>
         </View>
       </Pressable>
 
       {isNewImage && (
-        <Pressable
-          onPress={
-            onReset
-          }
-          style={
-            styles.resetImageButton
-          }
-        >
-          <Text
-            style={
-              styles.resetImageButtonText
-            }
-          >
-            Use existing photo
-          </Text>
+        <Pressable onPress={onReset} style={styles.resetImageButton}>
+          <Text style={styles.resetImageButtonText}>Use existing photo</Text>
         </Pressable>
       )}
     </View>
@@ -1576,3190 +981,1668 @@ const EditLicenseImage = ({
  * PROFILE SCREEN
  * ========================================================= */
 
-const ProfileScreen =
-  () => {
-    const navigation =
-      useNavigation();
-
-    const {
-      width,
-    } =
-      useWindowDimensions();
-
-    /* =====================================================
-     * STATE
-     * ===================================================== */
-
-    const [
-      authToken,
-      setAuthToken,
-    ] =
-      useState('');
-
-    const [
-      profile,
-      setProfile,
-    ] =
-      useState(
-        EMPTY_PROFILE,
-      );
-
-    const [
-      profileLoading,
-      setProfileLoading,
-    ] =
-      useState(true);
-
-    const [
-      refreshing,
-      setRefreshing,
-    ] =
-      useState(false);
-
-    const [
-      profileError,
-      setProfileError,
-    ] =
-      useState('');
-
-    const [
-      editProfileVisible,
-      setEditProfileVisible,
-    ] =
-      useState(false);
-
-    const [
-      editProfileLoading,
-      setEditProfileLoading,
-    ] =
-      useState(false);
-
-    const [
-      editProfileError,
-      setEditProfileError,
-    ] =
-      useState('');
-
-    const [
-      editForm,
-      setEditForm,
-    ] =
-      useState(
-        EMPTY_EDIT_FORM,
-      );
-
-    const [
-      licenseFrontFile,
-      setLicenseFrontFile,
-    ] =
-      useState(null);
-
-    const [
-      licenseBackFile,
-      setLicenseBackFile,
-    ] =
-      useState(null);
-
-    const [
-      editLicenseFrontPreview,
-      setEditLicenseFrontPreview,
-    ] =
-      useState('');
-
-    const [
-      editLicenseBackPreview,
-      setEditLicenseBackPreview,
-    ] =
-      useState('');
-
-    const [
-      documentPreview,
-      setDocumentPreview,
-    ] =
-      useState({
-        visible:
-          false,
-
-        title:
-          '',
-
-        original:
-          '',
-
-        candidates:
-          [],
-
-        index:
-          0,
-      });
-
-    const [
-      documentLoading,
-      setDocumentLoading,
-    ] =
-      useState(false);
-
-    const [
-      documentError,
-      setDocumentError,
-    ] =
-      useState(false);
-
-    const [
-      logoutPopupVisible,
-      setLogoutPopupVisible,
-    ] =
-      useState(false);
-
-    const [
-      logoutLoading,
-      setLogoutLoading,
-    ] =
-      useState(false);
-
-    /* =====================================================
-     * REFS
-     * ===================================================== */
-
-    const mountedRef =
-      useRef(true);
-
-    const loggingOutRef =
-      useRef(false);
-
-    const navigatingToLoginRef =
-      useRef(false);
-
-    const profileAbortRef =
-      useRef(null);
-
-    /* =====================================================
-     * RESPONSIVE
-     * ===================================================== */
-
-    const isSmallScreen =
-      width <= 360;
-
-    const horizontalPadding =
-      isSmallScreen
-        ? 12
-        : 16;
-
-    const cardGap =
-      isSmallScreen
-        ? 8
-        : 10;
-
-    /* =====================================================
-     * CANCEL
-     * ===================================================== */
-
-    const cancelRequests =
-      () => {
-        try {
-          profileAbortRef
-            .current
-            ?.abort();
-        } catch (
-          error
-        ) {}
-
-        profileAbortRef.current =
-          null;
-      };
-
-    /* =====================================================
-     * CLEAR SESSION
-     * ===================================================== */
-
-    const clearLocalSession =
-      async () => {
-        try {
-          await AsyncStorage
-            .setItem(
-              AUTH_LOGOUT_FLAG_KEY,
-              '1',
-            );
-
-          await AsyncStorage
-            .removeItem(
-              AUTH_TOKEN_KEY,
-            );
-
-          await AsyncStorage
-            .removeItem(
-              AUTH_USER_KEY,
-            );
-
-          await AsyncStorage
-            .removeItem(
-              AUTH_EMAIL_KEY,
-            );
-
-          await removeFcmToken();
-
-          setAuthToken(
-            '',
-          );
-        } catch (
-          error
-        ) {
-          console.log(
-            'CLEAR STORAGE ERROR:',
-            error,
-          );
-        }
-
-        try {
-          if (
-            axios.defaults &&
-            axios.defaults
-              .headers &&
-            axios.defaults
-              .headers
-              .common
-          ) {
-            delete axios
-              .defaults
-              .headers
-              .common
-              .Authorization;
-          }
-        } catch (
-          error
-        ) {}
-      };
-
-    /* =====================================================
-     * LOGIN REDIRECT
-     * ===================================================== */
-
-    const redirectToLogin =
-      () => {
-        if (
-          navigatingToLoginRef
-            .current
-        ) {
-          return;
-        }
-
-        navigatingToLoginRef
-          .current =
-          true;
-
-        cancelRequests();
-
-        let rootNavigation =
-          navigation;
-
-        let parent =
-          rootNavigation
-            .getParent?.();
-
-        while (
-          parent
-        ) {
-          rootNavigation =
-            parent;
-
-          parent =
-            rootNavigation
-              .getParent?.();
-        }
-
-        rootNavigation
-          .dispatch(
-            CommonActions
-              .reset({
-                index:
-                  0,
-
-                routes: [
-                  {
-                    name:
-                      'Login',
-                  },
-                ],
-              }),
-          );
-      };
-
-    /* =====================================================
-     * EXPIRED SESSION
-     * ===================================================== */
-
-    const handleExpiredSession =
-      async () => {
-        if (
-          loggingOutRef
-            .current
-        ) {
-          return;
-        }
-
-        loggingOutRef
-          .current =
-          true;
-
-        cancelRequests();
-
-        await clearLocalSession();
-
-        redirectToLogin();
-      };
-
-    /* =====================================================
-     * LOAD PROFILE
-     * ===================================================== */
-
-    const loadProfile =
-      useCallback(
-        async (
-          isRefresh =
-            false,
-        ) => {
-          if (
-            loggingOutRef
-              .current
-          ) {
-            return;
-          }
-
-          try {
-            profileAbortRef
-              .current
-              ?.abort();
-          } catch (
-            error
-          ) {}
-
-          const controller =
-            new AbortController();
-
-          profileAbortRef.current =
-            controller;
-
-          try {
-            if (
-              mountedRef.current
-            ) {
-              if (
-                isRefresh
-              ) {
-                setRefreshing(
-                  true,
-                );
-              } else {
-                setProfileLoading(
-                  true,
-                );
-              }
-
-              setProfileError(
-                '',
-              );
-            }
-
-            const logoutFlag =
-              await AsyncStorage
-                .getItem(
-                  AUTH_LOGOUT_FLAG_KEY,
-                );
-
-            const token =
-              await AsyncStorage
-                .getItem(
-                  AUTH_TOKEN_KEY,
-                );
-
-            if (
-              logoutFlag ===
-              '1'
-            ) {
-              await handleExpiredSession();
-
-              return;
-            }
-
-            if (!token) {
-              await handleExpiredSession();
-
-              return;
-            }
-
-            setAuthToken(
-              token,
-            );
-
-            const response =
-              await axios.get(
-                PROFILE_API_URL,
-
-                {
-                  headers: {
-                    Accept:
-                      'application/json',
-
-                    Authorization:
-                      `Bearer ${token}`,
-                  },
-
-                  signal:
-                    controller
-                      .signal,
-
-                  timeout:
-                    20000,
-                },
-              );
-
-            if (
-              controller
-                .signal
-                .aborted ||
-              !mountedRef.current ||
-              loggingOutRef
-                .current
-            ) {
-              return;
-            }
-
-            console.log(
-              'DRIVER PROFILE RESPONSE:',
-
-              JSON.stringify(
-                response?.data,
-                null,
-                2,
-              ),
-            );
-
-            if (
-              response?.data
-                ?.success ===
-                false ||
-              response?.data
-                ?.status ===
-                false
-            ) {
-              throw new Error(
-                response?.data
-                  ?.message ||
-                'Unable to load profile.',
-              );
-            }
-
-            const rawProfile =
-              extractProfileData(
-                response.data,
-              );
-
-            const formattedProfile =
-              normalizeProfileData(
-                rawProfile,
-              );
-
-            setProfile(
-              formattedProfile,
-            );
-
-            await AsyncStorage
-              .setItem(
-                AUTH_USER_KEY,
-
-                JSON.stringify(
-                  rawProfile,
-                ),
-              );
-          } catch (
-            error
-          ) {
-            if (
-              controller
-                .signal
-                .aborted ||
-              loggingOutRef
-                .current
-            ) {
-              return;
-            }
-
-            const status =
-              error
-                ?.response
-                ?.status;
-
-            if (
-              status === 401 ||
-              status === 403
-            ) {
-              await handleExpiredSession();
-
-              return;
-            }
-
-            console.log(
-              'PROFILE API ERROR:',
-
-              error
-                ?.response
-                ?.data ??
-              error
-                ?.message,
-            );
-
-            if (
-              mountedRef.current
-            ) {
-              setProfileError(
-                getApiErrorMessage(
-                  error,
-
-                  'Unable to load your profile.',
-                ),
-              );
-            }
-          } finally {
-            if (
-              mountedRef.current &&
-              !controller
-                .signal
-                .aborted &&
-              !loggingOutRef
-                .current
-            ) {
-              setProfileLoading(
-                false,
-              );
-
-              setRefreshing(
-                false,
-              );
-            }
-          }
-        },
-        [],
-      );
-
-    /* =====================================================
-     * MOUNT
-     * ===================================================== */
-
-    useEffect(
-      () => {
-        mountedRef.current =
-          true;
-
-        loadProfile(
-          false,
-        );
-
-        return () => {
-          mountedRef.current =
-            false;
-
-          cancelRequests();
-        };
-      },
-      [
-        loadProfile,
-      ],
-    );
-
-    useFocusEffect(
-      useCallback(
-        () => {
-          if (
-            !loggingOutRef
-              .current
-          ) {
-            loadProfile(
-              false,
-            );
-          }
-
-          return () => {};
-        },
-        [
-          loadProfile,
-        ],
-      ),
-    );
-
-    /* =====================================================
-     * EDIT FORM
-     * ===================================================== */
-
-    const updateEditField =
-      (
-        key,
-        value,
-      ) => {
-        setEditForm(
-          previous => ({
-            ...previous,
-
-            [key]:
-              value,
-          }),
-        );
-
-        if (
-          editProfileError
-        ) {
-          setEditProfileError(
-            '',
-          );
-        }
-      };
-
-    /* =====================================================
-     * OPEN EDIT
-     * ===================================================== */
-
-    const handleEditProfile =
-      () => {
-        if (
-          editProfileLoading
-        ) {
-          return;
-        }
-
-        setEditForm({
-          first_name:
-            profile.firstName ||
-            '',
-
-          last_name:
-            profile.lastName ||
-            '',
-
-          phone:
-            profile.phone ||
-            '',
-
-          email:
-            profile.email ||
-            '',
-
-          address:
-            profile.address ||
-            '',
-
-          vehicle_reg_no:
-            profile.vehicleNumber ||
-            '',
-
-          license_no:
-            profile.licenseNumber ||
-            '',
-
-          license_expiry:
-            profile.licenseExpiry ||
-            '',
-
-          assigned_zip:
-            profile.assignedZip ||
-            '',
-
-          old_password:
-            '',
-
-          new_password:
-            '',
-
-          new_password_confirmation:
-            '',
-        });
-
-        setLicenseFrontFile(
-          null,
-        );
-
-        setLicenseBackFile(
-          null,
-        );
-
-        setEditLicenseFrontPreview(
-          profile.licenseFront ||
-          '',
-        );
-
-        setEditLicenseBackPreview(
-          profile.licenseBack ||
-          '',
-        );
-
-        setEditProfileError(
-          '',
-        );
-
-        setEditProfileVisible(
-          true,
-        );
-      };
-
-    /* =====================================================
-     * CLOSE EDIT
-     * ===================================================== */
-
-    const closeEditProfile =
-      () => {
-        if (
-          editProfileLoading
-        ) {
-          return;
-        }
-
-        setEditProfileVisible(
-          false,
-        );
-
-        setEditProfileError(
-          '',
-        );
-
-        setLicenseFrontFile(
-          null,
-        );
-
-        setLicenseBackFile(
-          null,
-        );
-      };
-
-    /* =====================================================
-     * PICK LICENCE IMAGE
-     * ===================================================== */
-
-    const pickLicenseImage =
-      async side => {
-        try {
-          const result =
-            await launchImageLibrary({
-              mediaType:
-                'photo',
-
-              selectionLimit:
-                1,
-
-              quality:
-                0.85,
-
-              includeBase64:
-                false,
-            });
-
-          if (
-            result.didCancel
-          ) {
-            return;
-          }
-
-          if (
-            result.errorCode
-          ) {
-            AppAlert.alert(
-              'Image Error',
-
-              result
-                .errorMessage ||
-              'Unable to select image.',
-            );
-
-            return;
-          }
-
-          const asset =
-            result
-              ?.assets?.[0];
-
-          if (
-            !asset?.uri
-          ) {
-            AppAlert.alert(
-              'Image Error',
-
-              'Unable to read the selected image.',
-            );
-
-            return;
-          }
-
-          const file = {
-            uri:
-              asset.uri,
-
-            type:
-              asset.type ||
-              'image/jpeg',
-
-            name:
-              asset.fileName ||
-              `${
-                side ===
-                'front'
-                  ? 'license-front'
-                  : 'license-back'
-              }-${Date.now()}.jpg`,
-          };
-
-          if (
-            side ===
-            'front'
-          ) {
-            setLicenseFrontFile(
-              file,
-            );
-
-            setEditLicenseFrontPreview(
-              asset.uri,
-            );
-          } else {
-            setLicenseBackFile(
-              file,
-            );
-
-            setEditLicenseBackPreview(
-              asset.uri,
-            );
-          }
-
-          setEditProfileError(
-            '',
-          );
-        } catch (
-          error
-        ) {
-          console.log(
-            'IMAGE PICKER ERROR:',
-            error,
-          );
-
-          AppAlert.alert(
-            'Image Error',
-
-            'Unable to select licence image.',
-          );
-        }
-      };
-
-    const resetFrontImage =
-      () => {
-        setLicenseFrontFile(
-          null,
-        );
-
-        setEditLicenseFrontPreview(
-          profile.licenseFront ||
-          '',
-        );
-      };
-
-    const resetBackImage =
-      () => {
-        setLicenseBackFile(
-          null,
-        );
-
-        setEditLicenseBackPreview(
-          profile.licenseBack ||
-          '',
-        );
-      };
-
-    /* =====================================================
-     * SAVE PROFILE
-     * ===================================================== */
-
-    const saveProfileChanges =
-      async () => {
-        if (
-          editProfileLoading
-        ) {
-          return;
-        }
-
-        const firstName =
-          editForm
-            .first_name
-            .trim();
-
-        const lastName =
-          editForm
-            .last_name
-            .trim();
-
-        const phone =
-          editForm
-            .phone
-            .trim();
-
-        const email =
-          editForm
-            .email
-            .trim();
-
-        const address =
-          editForm
-            .address
-            .trim();
-
-        const vehicleRegNo =
-          editForm
-            .vehicle_reg_no
-            .trim();
-
-        const licenseNo =
-          editForm
-            .license_no
-            .trim();
-
-        const licenseExpiry =
-          editForm
-            .license_expiry
-            .trim();
-
-        const assignedZip =
-          editForm
-            .assigned_zip
-            .trim();
-
-        if (
-          !firstName
-        ) {
-          setEditProfileError(
-            'Please enter first name.',
-          );
-
-          return;
-        }
-
-        if (
-          !lastName
-        ) {
-          setEditProfileError(
-            'Please enter last name.',
-          );
-
-          return;
-        }
-
-        if (
-          !phone
-        ) {
-          setEditProfileError(
-            'Please enter phone number.',
-          );
-
-          return;
-        }
-
-        if (
-          !email ||
-          !email.includes(
-            '@',
-          )
-        ) {
-          setEditProfileError(
-            'Please enter a valid email address.',
-          );
-
-          return;
-        }
-
-        if (
-          !address
-        ) {
-          setEditProfileError(
-            'Please enter address.',
-          );
-
-          return;
-        }
-
-        if (
-          !vehicleRegNo
-        ) {
-          setEditProfileError(
-            'Please enter vehicle registration number.',
-          );
-
-          return;
-        }
-
-        if (
-          !licenseNo
-        ) {
-          setEditProfileError(
-            'Please enter licence number.',
-          );
-
-          return;
-        }
-
-        if (
-          !licenseExpiry
-        ) {
-          setEditProfileError(
-            'Please enter licence expiry.',
-          );
-
-          return;
-        }
-
-        const oldPassword =
-          editForm
-            .old_password;
-
-        const newPassword =
-          editForm
-            .new_password;
-
-        const confirmation =
-          editForm
-            .new_password_confirmation;
-
-        const wantsPasswordChange =
-          Boolean(
-            oldPassword ||
-            newPassword ||
-            confirmation,
-          );
-
-        if (
-          wantsPasswordChange
-        ) {
-          if (
-            !oldPassword ||
-            !newPassword ||
-            !confirmation
-          ) {
-            setEditProfileError(
-              'Please complete all password fields.',
-            );
-
-            return;
-          }
-
-          if (
-            newPassword !==
-            confirmation
-          ) {
-            setEditProfileError(
-              'New password and confirmation do not match.',
-            );
-
-            return;
-          }
-        }
-
-        setEditProfileLoading(
-          true,
-        );
-
-        setEditProfileError(
-          '',
-        );
-
-        try {
-          const token =
-            authToken ||
-            await AsyncStorage
-              .getItem(
-                AUTH_TOKEN_KEY,
-              );
-
-          if (
-            !token
-          ) {
-            await handleExpiredSession();
-
-            return;
-          }
-
-          const formData =
-            new FormData();
-
-          formData.append(
-            'first_name',
-            firstName,
-          );
-
-          formData.append(
-            'last_name',
-            lastName,
-          );
-
-          formData.append(
-            'phone',
-            phone,
-          );
-
-          formData.append(
-            'email',
-            email,
-          );
-
-          formData.append(
-            'address',
-            address,
-          );
-
-          formData.append(
-            'vehicle_reg_no',
-            vehicleRegNo,
-          );
-
-          formData.append(
-            'license_no',
-            licenseNo,
-          );
-
-          formData.append(
-            'license_expiry',
-            licenseExpiry,
-          );
-
-          formData.append(
-            'assigned_zip',
-            assignedZip,
-          );
-
-          if (
-            wantsPasswordChange
-          ) {
-            formData.append(
-              'old_password',
-              oldPassword,
-            );
-
-            formData.append(
-              'new_password',
-              newPassword,
-            );
-
-            formData.append(
-              'new_password_confirmation',
-              confirmation,
-            );
-          }
-
-          if (
-            licenseFrontFile
-          ) {
-            formData.append(
-              'license_copy_front',
-              {
-                uri:
-                  Platform.OS ===
-                  'ios'
-                    ? licenseFrontFile
-                        .uri
-                        .replace(
-                          'file://',
-                          '',
-                        )
-                    : licenseFrontFile
-                        .uri,
-
-                type:
-                  licenseFrontFile
-                    .type,
-
-                name:
-                  licenseFrontFile
-                    .name,
-              },
-            );
-          }
-
-          if (
-            licenseBackFile
-          ) {
-            formData.append(
-              'license_copy_back',
-              {
-                uri:
-                  Platform.OS ===
-                  'ios'
-                    ? licenseBackFile
-                        .uri
-                        .replace(
-                          'file://',
-                          '',
-                        )
-                    : licenseBackFile
-                        .uri,
-
-                type:
-                  licenseBackFile
-                    .type,
-
-                name:
-                  licenseBackFile
-                    .name,
-              },
-            );
-          }
-
-          const response =
-            await axios.post(
-              PROFILE_EDIT_API_URL,
-
-              formData,
-
-              {
-                headers: {
-                  Accept:
-                    'application/json',
-
-                  Authorization:
-                    `Bearer ${token}`,
-
-                  'Content-Type':
-                    'multipart/form-data',
-                },
-
-                timeout:
-                  60000,
-              },
-            );
-
-          console.log(
-            'PROFILE EDIT RESPONSE:',
-
-            JSON.stringify(
-              response?.data,
-              null,
-              2,
-            ),
-          );
-
-          if (
-            response?.data
-              ?.success ===
-              false ||
-            response?.data
-              ?.status ===
-              false
-          ) {
-            throw new Error(
-              response?.data
-                ?.message ||
-              'Unable to update profile.',
-            );
-          }
-
-          await AsyncStorage
-            .setItem(
-              AUTH_EMAIL_KEY,
-              email,
-            );
-
-          setEditProfileVisible(
-            false,
-          );
-
-          setLicenseFrontFile(
-            null,
-          );
-
-          setLicenseBackFile(
-            null,
-          );
-
-          await loadProfile(
-            false,
-          );
-
-          AppAlert.alert(
-            'Profile Updated',
-
-            response?.data
-              ?.message ||
-            'Your profile has been updated successfully.',
-          );
-        } catch (
-          error
-        ) {
-          const status =
-            error
-              ?.response
-              ?.status;
-
-          console.log(
-            'PROFILE EDIT ERROR:',
-
-            error
-              ?.response
-              ?.data ??
-            error
-              ?.message,
-          );
-
-          if (
-            status === 401 ||
-            status === 403
-          ) {
-            setEditProfileVisible(
-              false,
-            );
-
-            await handleExpiredSession();
-
-            return;
-          }
-
-          setEditProfileError(
-            getApiErrorMessage(
-              error,
-
-              'Unable to update profile.',
-            ),
-          );
-        } finally {
-          if (
-            mountedRef.current
-          ) {
-            setEditProfileLoading(
-              false,
-            );
-          }
-        }
-      };
-
-    /* =====================================================
-     * OPEN DOCUMENT
-     * ===================================================== */
-
-    const openDocument =
-      (
-        title,
-        image,
-      ) => {
-        if (
-          !image
-        ) {
-          AppAlert.alert(
-            'Document Unavailable',
-
-            `${title} has not been uploaded yet.`,
-          );
-
-          return;
-        }
-
-        const candidates =
-          getImageUrlCandidates(
-            image,
-          );
-
-        console.log(
-          '======================================',
-        );
-
-        console.log(
-          'OPEN DOCUMENT:',
-          title,
-        );
-
-        console.log(
-          'RAW IMAGE VALUE:',
-          image,
-        );
-
-        console.log(
-          'URL CANDIDATES:',
-          candidates,
-        );
-
-        console.log(
-          '======================================',
-        );
-
-        if (
-          candidates.length ===
-          0
-        ) {
-          AppAlert.alert(
-            'Document Unavailable',
-
-            'Unable to determine the licence image URL.',
-          );
-
-          return;
-        }
-
-        setDocumentError(
-          false,
-        );
-
-        setDocumentLoading(
-          true,
-        );
-
-        setDocumentPreview({
-          visible:
-            true,
-
-          title,
-
-          original:
-            image,
-
-          candidates,
-
-          index:
-            0,
-        });
-      };
-
-    /* =====================================================
-     * DOCUMENT IMAGE ERROR
-     * ===================================================== */
-
-    const handleDocumentImageError =
-      event => {
-        const {
-          candidates,
-          index,
-          title,
-        } =
-          documentPreview;
-
-        const current =
-          candidates[
-            index
-          ];
-
-        console.log(
-          '❌ LICENCE PREVIEW FAILED:',
-          {
-            title,
-
-            index,
-
-            url:
-              current,
-
-            error:
-              event
-                ?.nativeEvent
-                ?.error,
-          },
-        );
-
-        if (
-          index <
-          candidates.length -
-            1
-        ) {
-          const nextIndex =
-            index + 1;
-
-          console.log(
-            'TRYING NEXT LICENCE URL:',
-            candidates[
-              nextIndex
-            ],
-          );
-
-          setDocumentLoading(
-            true,
-          );
-
-          setDocumentError(
-            false,
-          );
-
-          setDocumentPreview(
-            previous => ({
-              ...previous,
-
-              index:
-                nextIndex,
-            }),
-          );
-
-          return;
-        }
-
-        console.log(
-          'ALL LICENCE IMAGE URLS FAILED.',
-        );
-
-        setDocumentLoading(
-          false,
-        );
-
-        setDocumentError(
-          true,
-        );
-      };
-
-    /* =====================================================
-     * CLOSE DOCUMENT
-     * ===================================================== */
-
-    const closeDocument =
-      () => {
-        setDocumentPreview({
-          visible:
-            false,
-
-          title:
-            '',
-
-          original:
-            '',
-
-          candidates:
-            [],
-
-          index:
-            0,
-        });
-
-        setDocumentLoading(
-          false,
-        );
-
-        setDocumentError(
-          false,
-        );
-      };
-
-    /* =====================================================
-     * LOGOUT
-     * ===================================================== */
-
-    const performLogout =
-      async () => {
-        if (
-          logoutLoading
-        ) {
-          return;
-        }
-
-        setLogoutLoading(
-          true,
-        );
-
-        loggingOutRef
-          .current =
-          true;
-
-        cancelRequests();
-
-        const token =
-          authToken ||
-          await AsyncStorage
-            .getItem(
-              AUTH_TOKEN_KEY,
-            );
-
-        await clearLocalSession();
-
-        if (
-          token
-        ) {
-          try {
-            await axios.post(
-              LOGOUT_API_URL,
-
-              {},
-
-              {
-                headers: {
-                  Accept:
-                    'application/json',
-
-                  Authorization:
-                    `Bearer ${token}`,
-                },
-
-                timeout:
-                  10000,
-              },
-            );
-          } catch (
-            error
-          ) {
-            console.log(
-              'LOGOUT API ERROR:',
-
-              error
-                ?.response
-                ?.data ??
-              error
-                ?.message,
-            );
-          }
-        }
-
-        setLogoutPopupVisible(
-          false,
-        );
-
-        redirectToLogin();
-      };
-
-    /* =====================================================
-     * PROFILE IMAGE
-     * ===================================================== */
-
-    const profileImageCandidates =
-      getImageUrlCandidates(
-        profile.profileImage,
-      );
-
-    const profileImageUri =
-      profileImageCandidates[
-        0
-      ] ||
-      DEFAULT_PROFILE_IMAGE;
-
-    const profileImageSource =
-      profile.profileImage
-        ? createImageSource(
-            profileImageUri,
-            authToken,
-          )
-        : {
-            uri:
-              DEFAULT_PROFILE_IMAGE,
-          };
-
-    const statusInfo =
-      getStatusInfo(
-        profile.status,
-      );
-
-    const currentDocumentImage =
-      documentPreview
-        .candidates[
-          documentPreview
-            .index
-        ] ||
-      '';
-
-    /* =====================================================
-     * LOADING
-     * ===================================================== */
-
-    if (
-      profileLoading
-    ) {
-      return (
-        <SafeAreaView
-          style={
-            styles.safeArea
-          }
-        >
-          <StatusBar
-            barStyle="dark-content"
-            backgroundColor="#f6f7f9"
-          />
-
-          <View
-            style={
-              styles.loadingScreen
-            }
-          >
-            <ActivityIndicator
-              size="large"
-              color="#a9090d"
-            />
-
-            <Text
-              style={
-                styles.loadingTitle
-              }
-            >
-              Loading Your Profile
-            </Text>
-
-            <Text
-              style={
-                styles.loadingMessage
-              }
-            >
-              Retrieving your driver information.
-            </Text>
-          </View>
-        </SafeAreaView>
-      );
+const ProfileScreen = () => {
+  const navigation = useNavigation();
+
+  const { width } = useWindowDimensions();
+
+  /* =====================================================
+   * STATE
+   * ===================================================== */
+
+  const [authToken, setAuthToken] = useState('');
+
+  const [profile, setProfile] = useState(EMPTY_PROFILE);
+
+  const [profileLoading, setProfileLoading] = useState(true);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [profileError, setProfileError] = useState('');
+
+  const [editProfileVisible, setEditProfileVisible] = useState(false);
+
+  const [editProfileLoading, setEditProfileLoading] = useState(false);
+
+  const [editProfileError, setEditProfileError] = useState('');
+
+  const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM);
+
+  const [licenseFrontFile, setLicenseFrontFile] = useState(null);
+
+  const [licenseBackFile, setLicenseBackFile] = useState(null);
+
+  const [editLicenseFrontPreview, setEditLicenseFrontPreview] = useState('');
+
+  const [editLicenseBackPreview, setEditLicenseBackPreview] = useState('');
+
+  const [documentPreview, setDocumentPreview] = useState({
+    visible: false,
+
+    title: '',
+
+    original: '',
+
+    candidates: [],
+
+    index: 0,
+  });
+
+  const [documentLoading, setDocumentLoading] = useState(false);
+
+  const [documentError, setDocumentError] = useState(false);
+
+  const [logoutPopupVisible, setLogoutPopupVisible] = useState(false);
+
+  const [logoutLoading, setLogoutLoading] = useState(false);
+
+  /* =====================================================
+   * REFS
+   * ===================================================== */
+
+  const mountedRef = useRef(true);
+
+  const loggingOutRef = useRef(false);
+
+  const navigatingToLoginRef = useRef(false);
+
+  const profileAbortRef = useRef(null);
+
+  /* =====================================================
+   * RESPONSIVE
+   * ===================================================== */
+
+  const isSmallScreen = width <= 360;
+
+  const horizontalPadding = isSmallScreen ? 12 : 16;
+
+  const cardGap = isSmallScreen ? 8 : 10;
+
+  /* =====================================================
+   * CANCEL
+   * ===================================================== */
+
+  const cancelRequests = () => {
+    try {
+      profileAbortRef.current?.abort();
+    } catch (error) {}
+
+    profileAbortRef.current = null;
+  };
+
+  /* =====================================================
+   * CLEAR SESSION
+   * ===================================================== */
+
+  const clearLocalSession = async () => {
+    try {
+      await AsyncStorage.setItem(AUTH_LOGOUT_FLAG_KEY, '1');
+
+      await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+
+      await AsyncStorage.removeItem(AUTH_USER_KEY);
+
+      await AsyncStorage.removeItem(AUTH_EMAIL_KEY);
+
+      await removeFcmToken();
+
+      setAuthToken('');
+    } catch (error) {
+      console.log('CLEAR STORAGE ERROR:', error);
     }
 
-    /* =====================================================
-     * UI
-     * ===================================================== */
+    try {
+      if (
+        axios.defaults &&
+        axios.defaults.headers &&
+        axios.defaults.headers.common
+      ) {
+        delete axios.defaults.headers.common.Authorization;
+      }
+    } catch (error) {}
+  };
 
-    return (
-      <SafeAreaView
-        style={
-          styles.safeArea
+  /* =====================================================
+   * LOGIN REDIRECT
+   * ===================================================== */
+
+  const redirectToLogin = () => {
+    if (navigatingToLoginRef.current) {
+      return;
+    }
+
+    navigatingToLoginRef.current = true;
+
+    cancelRequests();
+
+    let rootNavigation = navigation;
+
+    let parent = rootNavigation.getParent?.();
+
+    while (parent) {
+      rootNavigation = parent;
+
+      parent = rootNavigation.getParent?.();
+    }
+
+    rootNavigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+
+        routes: [
+          {
+            name: 'Login',
+          },
+        ],
+      }),
+    );
+  };
+
+  /* =====================================================
+   * EXPIRED SESSION
+   * ===================================================== */
+
+  const handleExpiredSession = async () => {
+    if (loggingOutRef.current) {
+      return;
+    }
+
+    loggingOutRef.current = true;
+
+    cancelRequests();
+
+    await clearLocalSession();
+
+    redirectToLogin();
+  };
+
+  /* =====================================================
+   * LOAD PROFILE
+   * ===================================================== */
+
+  const loadProfile = useCallback(async (isRefresh = false) => {
+    if (loggingOutRef.current) {
+      return;
+    }
+
+    try {
+      profileAbortRef.current?.abort();
+    } catch (error) {}
+
+    const controller = new AbortController();
+
+    profileAbortRef.current = controller;
+
+    try {
+      if (mountedRef.current) {
+        if (isRefresh) {
+          setRefreshing(true);
+        } else {
+          setProfileLoading(true);
         }
-        edges={[
-          'top',
-          'left',
-          'right',
-        ]}
-      >
-        <StatusBar
-          barStyle="light-content"
-          backgroundColor="#a9090d"
-        />
 
-        <View
-          style={
-            styles.screen
-          }
-        >
-          {/* HEADER */}
+        setProfileError('');
+      }
 
-          <View
-            style={
-              styles.header
-            }
-          >
-            <View
-              style={
-                styles.headerCircleOne
-              }
-            />
+      const logoutFlag = await AsyncStorage.getItem(AUTH_LOGOUT_FLAG_KEY);
 
-            <View
-              style={
-                styles.headerCircleTwo
-              }
-            />
+      const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
 
-            <View
-              style={
-                styles.headerTopRow
-              }
+      if (logoutFlag === '1') {
+        await handleExpiredSession();
+
+        return;
+      }
+
+      if (!token) {
+        await handleExpiredSession();
+
+        return;
+      }
+
+      setAuthToken(token);
+
+      const response = await axios.get(
+        PROFILE_API_URL,
+
+        {
+          headers: {
+            Accept: 'application/json',
+
+            Authorization: `Bearer ${token}`,
+          },
+
+          signal: controller.signal,
+
+          timeout: 20000,
+        },
+      );
+
+      if (
+        controller.signal.aborted ||
+        !mountedRef.current ||
+        loggingOutRef.current
+      ) {
+        return;
+      }
+
+      console.log(
+        'DRIVER PROFILE RESPONSE:',
+
+        JSON.stringify(response?.data, null, 2),
+      );
+
+      if (
+        response?.data?.success === false ||
+        response?.data?.status === false
+      ) {
+        throw new Error(response?.data?.message || 'Unable to load profile.');
+      }
+
+      const rawProfile = extractProfileData(response.data);
+
+      const formattedProfile = normalizeProfileData(rawProfile);
+
+      setProfile(formattedProfile);
+
+      await AsyncStorage.setItem(
+        AUTH_USER_KEY,
+
+        JSON.stringify(rawProfile),
+      );
+    } catch (error) {
+      if (controller.signal.aborted || loggingOutRef.current) {
+        return;
+      }
+
+      const status = error?.response?.status;
+
+      if (status === 401 || status === 403) {
+        await handleExpiredSession();
+
+        return;
+      }
+
+      console.log(
+        'PROFILE API ERROR:',
+
+        error?.response?.data ?? error?.message,
+      );
+
+      if (mountedRef.current) {
+        setProfileError(
+          getApiErrorMessage(
+            error,
+
+            'Unable to load your profile.',
+          ),
+        );
+      }
+    } finally {
+      if (
+        mountedRef.current &&
+        !controller.signal.aborted &&
+        !loggingOutRef.current
+      ) {
+        setProfileLoading(false);
+
+        setRefreshing(false);
+      }
+    }
+  }, []);
+
+  /* =====================================================
+   * MOUNT
+   * ===================================================== */
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    loadProfile(false);
+
+    return () => {
+      mountedRef.current = false;
+
+      cancelRequests();
+    };
+  }, [loadProfile]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!loggingOutRef.current) {
+        loadProfile(false);
+      }
+
+      return () => {};
+    }, [loadProfile]),
+  );
+
+  /* =====================================================
+   * EDIT FORM
+   * ===================================================== */
+
+  const updateEditField = (key, value) => {
+    setEditForm(previous => ({
+      ...previous,
+
+      [key]: value,
+    }));
+
+    if (editProfileError) {
+      setEditProfileError('');
+    }
+  };
+
+  /* =====================================================
+   * OPEN EDIT
+   * ===================================================== */
+
+  const handleEditProfile = () => {
+    if (editProfileLoading) {
+      return;
+    }
+
+    setEditForm({
+      first_name: profile.firstName || '',
+
+      last_name: profile.lastName || '',
+
+      phone: profile.phone || '',
+
+      email: profile.email || '',
+
+      address: profile.address || '',
+
+      vehicle_reg_no: profile.vehicleNumber || '',
+
+      license_no: profile.licenseNumber || '',
+
+      license_expiry: profile.licenseExpiry || '',
+
+      assigned_zip: profile.assignedZip || '',
+
+      old_password: '',
+
+      new_password: '',
+
+      new_password_confirmation: '',
+    });
+
+    setLicenseFrontFile(null);
+
+    setLicenseBackFile(null);
+
+    setEditLicenseFrontPreview(profile.licenseFront || '');
+
+    setEditLicenseBackPreview(profile.licenseBack || '');
+
+    setEditProfileError('');
+
+    setEditProfileVisible(true);
+  };
+
+  /* =====================================================
+   * CLOSE EDIT
+   * ===================================================== */
+
+  const closeEditProfile = () => {
+    if (editProfileLoading) {
+      return;
+    }
+
+    setEditProfileVisible(false);
+
+    setEditProfileError('');
+
+    setLicenseFrontFile(null);
+
+    setLicenseBackFile(null);
+  };
+
+  /* =====================================================
+   * PICK LICENCE IMAGE
+   * ===================================================== */
+
+  const pickLicenseImage = async side => {
+    try {
+      const result = await launchImageLibrary({
+        mediaType: 'photo',
+
+        selectionLimit: 1,
+
+        quality: 0.85,
+
+        includeBase64: false,
+      });
+
+      if (result.didCancel) {
+        return;
+      }
+
+      if (result.errorCode) {
+        AppAlert.alert(
+          'Image Error',
+
+          result.errorMessage || 'Unable to select image.',
+        );
+
+        return;
+      }
+
+      const asset = result?.assets?.[0];
+
+      if (!asset?.uri) {
+        AppAlert.alert(
+          'Image Error',
+
+          'Unable to read the selected image.',
+        );
+
+        return;
+      }
+
+      const file = {
+        uri: asset.uri,
+
+        type: asset.type || 'image/jpeg',
+
+        name:
+          asset.fileName ||
+          `${
+            side === 'front' ? 'license-front' : 'license-back'
+          }-${Date.now()}.jpg`,
+      };
+
+      if (side === 'front') {
+        setLicenseFrontFile(file);
+
+        setEditLicenseFrontPreview(asset.uri);
+      } else {
+        setLicenseBackFile(file);
+
+        setEditLicenseBackPreview(asset.uri);
+      }
+
+      setEditProfileError('');
+    } catch (error) {
+      console.log('IMAGE PICKER ERROR:', error);
+
+      AppAlert.alert(
+        'Image Error',
+
+        'Unable to select licence image.',
+      );
+    }
+  };
+
+  const resetFrontImage = () => {
+    setLicenseFrontFile(null);
+
+    setEditLicenseFrontPreview(profile.licenseFront || '');
+  };
+
+  const resetBackImage = () => {
+    setLicenseBackFile(null);
+
+    setEditLicenseBackPreview(profile.licenseBack || '');
+  };
+
+  /* =====================================================
+   * SAVE PROFILE
+   * ===================================================== */
+
+  const saveProfileChanges = async () => {
+    if (editProfileLoading) {
+      return;
+    }
+
+    const firstName = editForm.first_name.trim();
+
+    const lastName = editForm.last_name.trim();
+
+    const phone = editForm.phone.trim();
+
+    const email = editForm.email.trim();
+
+    const address = editForm.address.trim();
+
+    const vehicleRegNo = editForm.vehicle_reg_no.trim();
+
+    const licenseNo = editForm.license_no.trim();
+
+    const licenseExpiry = editForm.license_expiry.trim();
+
+    const assignedZip = editForm.assigned_zip.trim();
+
+    if (!firstName) {
+      setEditProfileError('Please enter first name.');
+
+      return;
+    }
+
+    if (!lastName) {
+      setEditProfileError('Please enter last name.');
+
+      return;
+    }
+
+    if (!phone) {
+      setEditProfileError('Please enter phone number.');
+
+      return;
+    }
+
+    if (!email || !email.includes('@')) {
+      setEditProfileError('Please enter a valid email address.');
+
+      return;
+    }
+
+    if (!address) {
+      setEditProfileError('Please enter address.');
+
+      return;
+    }
+
+    if (!vehicleRegNo) {
+      setEditProfileError('Please enter vehicle registration number.');
+
+      return;
+    }
+
+    if (!licenseNo) {
+      setEditProfileError('Please enter licence number.');
+
+      return;
+    }
+
+    if (!licenseExpiry) {
+      setEditProfileError('Please enter licence expiry.');
+
+      return;
+    }
+
+    const oldPassword = editForm.old_password;
+
+    const newPassword = editForm.new_password;
+
+    const confirmation = editForm.new_password_confirmation;
+
+    const wantsPasswordChange = Boolean(
+      oldPassword || newPassword || confirmation,
+    );
+
+    if (wantsPasswordChange) {
+      if (!oldPassword || !newPassword || !confirmation) {
+        setEditProfileError('Please complete all password fields.');
+
+        return;
+      }
+
+      if (newPassword !== confirmation) {
+        setEditProfileError('New password and confirmation do not match.');
+
+        return;
+      }
+    }
+
+    setEditProfileLoading(true);
+
+    setEditProfileError('');
+
+    try {
+      const token = authToken || (await AsyncStorage.getItem(AUTH_TOKEN_KEY));
+
+      if (!token) {
+        await handleExpiredSession();
+
+        return;
+      }
+
+      const formData = new FormData();
+
+      formData.append('first_name', firstName);
+
+      formData.append('last_name', lastName);
+
+      formData.append('phone', phone);
+
+      formData.append('email', email);
+
+      formData.append('address', address);
+
+      formData.append('vehicle_reg_no', vehicleRegNo);
+
+      formData.append('license_no', licenseNo);
+
+      formData.append('license_expiry', licenseExpiry);
+
+      formData.append('assigned_zip', assignedZip);
+
+      if (wantsPasswordChange) {
+        formData.append('old_password', oldPassword);
+
+        formData.append('new_password', newPassword);
+
+        formData.append('new_password_confirmation', confirmation);
+      }
+
+      if (licenseFrontFile) {
+        formData.append('license_copy_front', {
+          uri:
+            Platform.OS === 'ios'
+              ? licenseFrontFile.uri.replace('file://', '')
+              : licenseFrontFile.uri,
+
+          type: licenseFrontFile.type,
+
+          name: licenseFrontFile.name,
+        });
+      }
+
+      if (licenseBackFile) {
+        formData.append('license_copy_back', {
+          uri:
+            Platform.OS === 'ios'
+              ? licenseBackFile.uri.replace('file://', '')
+              : licenseBackFile.uri,
+
+          type: licenseBackFile.type,
+
+          name: licenseBackFile.name,
+        });
+      }
+
+      const response = await axios.post(
+        PROFILE_EDIT_API_URL,
+
+        formData,
+
+        {
+          headers: {
+            Accept: 'application/json',
+
+            Authorization: `Bearer ${token}`,
+
+            'Content-Type': 'multipart/form-data',
+          },
+
+          timeout: 60000,
+        },
+      );
+
+      console.log(
+        'PROFILE EDIT RESPONSE:',
+
+        JSON.stringify(response?.data, null, 2),
+      );
+
+      if (
+        response?.data?.success === false ||
+        response?.data?.status === false
+      ) {
+        throw new Error(response?.data?.message || 'Unable to update profile.');
+      }
+
+      await AsyncStorage.setItem(AUTH_EMAIL_KEY, email);
+
+      setEditProfileVisible(false);
+
+      setLicenseFrontFile(null);
+
+      setLicenseBackFile(null);
+
+      await loadProfile(false);
+
+      AppAlert.alert(
+        'Profile Updated',
+
+        response?.data?.message ||
+          'Your profile has been updated successfully.',
+      );
+    } catch (error) {
+      const status = error?.response?.status;
+
+      console.log(
+        'PROFILE EDIT ERROR:',
+
+        error?.response?.data ?? error?.message,
+      );
+
+      if (status === 401 || status === 403) {
+        setEditProfileVisible(false);
+
+        await handleExpiredSession();
+
+        return;
+      }
+
+      setEditProfileError(
+        getApiErrorMessage(
+          error,
+
+          'Unable to update profile.',
+        ),
+      );
+    } finally {
+      if (mountedRef.current) {
+        setEditProfileLoading(false);
+      }
+    }
+  };
+
+  /* =====================================================
+   * OPEN DOCUMENT
+   * ===================================================== */
+
+  const openDocument = (title, image) => {
+    if (!image) {
+      AppAlert.alert(
+        'Document Unavailable',
+
+        `${title} has not been uploaded yet.`,
+      );
+
+      return;
+    }
+
+    const candidates = getImageUrlCandidates(image);
+
+    console.log('======================================');
+
+    console.log('OPEN DOCUMENT:', title);
+
+    console.log('RAW IMAGE VALUE:', image);
+
+    console.log('URL CANDIDATES:', candidates);
+
+    console.log('======================================');
+
+    if (candidates.length === 0) {
+      AppAlert.alert(
+        'Document Unavailable',
+
+        'Unable to determine the licence image URL.',
+      );
+
+      return;
+    }
+
+    setDocumentError(false);
+
+    setDocumentLoading(true);
+
+    setDocumentPreview({
+      visible: true,
+
+      title,
+
+      original: image,
+
+      candidates,
+
+      index: 0,
+    });
+  };
+
+  /* =====================================================
+   * DOCUMENT IMAGE ERROR
+   * ===================================================== */
+
+  const handleDocumentImageError = event => {
+    const { candidates, index, title } = documentPreview;
+
+    const current = candidates[index];
+
+    console.log('❌ LICENCE PREVIEW FAILED:', {
+      title,
+
+      index,
+
+      url: current,
+
+      error: event?.nativeEvent?.error,
+    });
+
+    if (index < candidates.length - 1) {
+      const nextIndex = index + 1;
+
+      console.log('TRYING NEXT LICENCE URL:', candidates[nextIndex]);
+
+      setDocumentLoading(true);
+
+      setDocumentError(false);
+
+      setDocumentPreview(previous => ({
+        ...previous,
+
+        index: nextIndex,
+      }));
+
+      return;
+    }
+
+    console.log('ALL LICENCE IMAGE URLS FAILED.');
+
+    setDocumentLoading(false);
+
+    setDocumentError(true);
+  };
+
+  /* =====================================================
+   * CLOSE DOCUMENT
+   * ===================================================== */
+
+  const closeDocument = () => {
+    setDocumentPreview({
+      visible: false,
+
+      title: '',
+
+      original: '',
+
+      candidates: [],
+
+      index: 0,
+    });
+
+    setDocumentLoading(false);
+
+    setDocumentError(false);
+  };
+
+  /* =====================================================
+   * LOGOUT
+   * ===================================================== */
+
+  const performLogout = async () => {
+    if (logoutLoading) {
+      return;
+    }
+
+    setLogoutLoading(true);
+
+    loggingOutRef.current = true;
+
+    cancelRequests();
+
+    const token = authToken || (await AsyncStorage.getItem(AUTH_TOKEN_KEY));
+
+    await clearLocalSession();
+
+    if (token) {
+      try {
+        await axios.post(
+          LOGOUT_API_URL,
+
+          {},
+
+          {
+            headers: {
+              Accept: 'application/json',
+
+              Authorization: `Bearer ${token}`,
+            },
+
+            timeout: 10000,
+          },
+        );
+      } catch (error) {
+        console.log(
+          'LOGOUT API ERROR:',
+
+          error?.response?.data ?? error?.message,
+        );
+      }
+    }
+
+    setLogoutPopupVisible(false);
+
+    redirectToLogin();
+  };
+
+  /* =====================================================
+   * PROFILE IMAGE
+   * ===================================================== */
+
+  const profileInitial = getProfileInitial(
+    profile.firstName,
+    profile.name,
+    profile.email,
+  );
+
+  const statusInfo = getStatusInfo(profile.status);
+
+  const currentDocumentImage =
+    documentPreview.candidates[documentPreview.index] || '';
+
+  /* =====================================================
+   * LOADING
+   * ===================================================== */
+
+  if (profileLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor="#f6f7f9" />
+
+        <View style={styles.loadingScreen}>
+          <ActivityIndicator size="large" color="#a9090d" />
+
+          <Text style={styles.loadingTitle}>Loading Your Profile</Text>
+
+          <Text style={styles.loadingMessage}>
+            Retrieving your driver information.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  /* =====================================================
+   * UI
+   * ===================================================== */
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="light-content" backgroundColor="#a9090d" />
+
+      <View style={styles.screen}>
+        {/* HEADER */}
+
+        <View style={styles.header}>
+          <View style={styles.headerCircleOne} />
+
+          <View style={styles.headerCircleTwo} />
+
+          <View style={styles.headerTopRow}>
+            <Pressable
+              onPress={() => navigation.goBack()}
+              style={styles.headerBackButton}
             >
-              <Pressable
-                onPress={() =>
-                  navigation
-                    .goBack()
-                }
-                style={
-                  styles.headerBackButton
-                }
-              >
-                <Image
-                  source={require('../assets/login-icons/back.png')}
-                  style={
-                    styles.headerBackIcon
-                  }
-                  resizeMode="contain"
-                />
-              </Pressable>
+              <Image
+                source={require('../assets/login-icons/back.png')}
+                style={styles.headerBackIcon}
+                resizeMode="contain"
+              />
+            </Pressable>
 
-              <View
-                style={
-                  styles.headerTitleArea
-                }
-              >
-                <Text
-                  style={
-                    styles.headerEyebrow
-                  }
-                >
-                  KP&apos;S KITCHEN
-                </Text>
+            <View style={styles.headerTitleArea}>
+              <Text style={styles.headerEyebrow}>KP&apos;S KITCHEN</Text>
 
-                <Text
-                  style={
-                    styles.headerTitle
-                  }
-                >
-                  My Profile
-                </Text>
-              </View>
-
-              <Pressable
-                onPress={
-                  handleEditProfile
-                }
-                style={
-                  styles.headerEditButton
-                }
-              >
-                <Text
-                  style={
-                    styles.headerEditIcon
-                  }
-                >
-                  ✎
-                </Text>
-              </Pressable>
+              <Text style={styles.headerTitle}>My Profile</Text>
             </View>
 
-            <View
-              style={
-                styles.headerProfileArea
-              }
+            <Pressable
+              onPress={handleEditProfile}
+              style={styles.headerEditButton}
             >
-              <View
-                style={
-                  styles.headerProfileImageWrapper
-                }
-              >
-                <Image
-                  source={
-                    profileImageSource
-                  }
-                  style={
-                    styles.headerProfileImage
-                  }
-                  resizeMode="cover"
-                />
+              <Text style={styles.headerEditIcon}>✎</Text>
+            </Pressable>
+          </View>
 
+          <View style={styles.headerProfileArea}>
+            <View style={styles.headerProfileImageWrapper}>
+              <ProfileAvatar
+                imageValue={profile.profileImage}
+                initial={profileInitial}
+                authToken={authToken}
+              />
+
+              <View
+                style={[
+                  styles.onlineBadgeDot,
+
+                  {
+                    backgroundColor: statusInfo.dot,
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.headerProfileTextArea}>
+              <Text numberOfLines={1} style={styles.headerProfileName}>
+                {profile.name || 'Driver'}
+              </Text>
+
+              <Text numberOfLines={1} style={styles.headerProfileEmail}>
+                {profile.email || 'Email not available'}
+              </Text>
+
+              <View style={styles.headerStatusRow}>
                 <View
                   style={[
-                    styles.onlineBadgeDot,
+                    styles.headerStatusBadge,
 
                     {
-                      backgroundColor:
-                        statusInfo.dot,
+                      backgroundColor: statusInfo.background,
                     },
                   ]}
-                />
-              </View>
-
-              <View
-                style={
-                  styles.headerProfileTextArea
-                }
-              >
-                <Text
-                  numberOfLines={
-                    1
-                  }
-                  style={
-                    styles.headerProfileName
-                  }
-                >
-                  {profile.name ||
-                    'Driver'}
-                </Text>
-
-                <Text
-                  numberOfLines={
-                    1
-                  }
-                  style={
-                    styles.headerProfileEmail
-                  }
-                >
-                  {profile.email ||
-                    'Email not available'}
-                </Text>
-
-                <View
-                  style={
-                    styles.headerStatusRow
-                  }
                 >
                   <View
                     style={[
-                      styles.headerStatusBadge,
+                      styles.headerStatusDot,
 
                       {
-                        backgroundColor:
-                          statusInfo
-                            .background,
+                        backgroundColor: statusInfo.dot,
+                      },
+                    ]}
+                  />
+
+                  <Text
+                    style={[
+                      styles.headerStatusText,
+
+                      {
+                        color: statusInfo.color,
                       },
                     ]}
                   >
-                    <View
-                      style={[
-                        styles.headerStatusDot,
-
-                        {
-                          backgroundColor:
-                            statusInfo.dot,
-                        },
-                      ]}
-                    />
-
-                    <Text
-                      style={[
-                        styles.headerStatusText,
-
-                        {
-                          color:
-                            statusInfo.color,
-                        },
-                      ]}
-                    >
-                      {
-                        statusInfo.label
-                      }
-                    </Text>
-                  </View>
-
-                  <Text
-                    style={
-                      styles.headerUserType
-                    }
-                  >
-                    {String(
-                      profile.userType ||
-                        'driver',
-                    ).toUpperCase()}
+                    {statusInfo.label}
                   </Text>
                 </View>
+
+                <Text style={styles.headerUserType}>
+                  {String(profile.userType || 'driver').toUpperCase()}
+                </Text>
               </View>
             </View>
           </View>
-
-          {/* BODY */}
-
-          <ScrollView
-            showsVerticalScrollIndicator={
-              false
-            }
-            refreshControl={
-              <RefreshControl
-                refreshing={
-                  refreshing
-                }
-                onRefresh={() =>
-                  loadProfile(
-                    true,
-                  )
-                }
-                colors={[
-                  '#a9090d',
-                ]}
-                tintColor="#a9090d"
-              />
-            }
-            contentContainerStyle={{
-              paddingHorizontal:
-                horizontalPadding,
-
-              paddingTop:
-                17,
-
-              paddingBottom:
-                80,
-            }}
-          >
-            {!!profileError && (
-              <View
-                style={
-                  styles.errorCard
-                }
-              >
-                <Text
-                  style={
-                    styles.errorTitle
-                  }
-                >
-                  Unable to Load Profile
-                </Text>
-
-                <Text
-                  style={
-                    styles.errorMessage
-                  }
-                >
-                  {
-                    profileError
-                  }
-                </Text>
-              </View>
-            )}
-
-            {/* DRIVER DETAILS */}
-
-            <View
-              style={
-                styles.driverDetailsCard
-              }
-            >
-              <Text
-                style={
-                  styles.cardTitle
-                }
-              >
-                Driver Details
-              </Text>
-
-              <Text
-                style={
-                  styles.cardSubtitle
-                }
-              >
-                Your personal information
-              </Text>
-
-              <View
-                style={
-                  styles.cardDivider
-                }
-              />
-
-              <ProfileInfoRow
-                icon="F"
-                label="FIRST NAME"
-                value={
-                  profile.firstName ||
-                  'Not available'
-                }
-              />
-
-              <View
-                style={
-                  styles.rowDivider
-                }
-              />
-
-              <ProfileInfoRow
-                icon="L"
-                label="LAST NAME"
-                value={
-                  profile.lastName ||
-                  'Not available'
-                }
-              />
-
-              <View
-                style={
-                  styles.rowDivider
-                }
-              />
-
-              <ProfileInfoRow
-                icon="@"
-                label="EMAIL"
-                value={
-                  profile.email ||
-                  'Not available'
-                }
-              />
-
-              <View
-                style={
-                  styles.rowDivider
-                }
-              />
-
-              <ProfileInfoRow
-                icon="☎"
-                label="PHONE"
-                value={
-                  profile.phone ||
-                  'Not available'
-                }
-              />
-
-              <View
-                style={
-                  styles.rowDivider
-                }
-              />
-
-              <ProfileInfoRow
-                icon="⌖"
-                label="ADDRESS"
-                multiline
-                value={
-                  profile.address ||
-                  'Not available'
-                }
-              />
-            </View>
-
-            {/* PERFORMANCE */}
-
-            <Text
-              style={
-                styles.sectionTitle
-              }
-            >
-              Delivery Performance
-            </Text>
-
-            <View
-              style={[
-                styles.performanceRow,
-
-                {
-                  columnGap:
-                    cardGap,
-                },
-              ]}
-            >
-              <Pressable
-                onPress={() =>
-                  navigation
-                    .navigate(
-                      'TotalOrder',
-                    )
-                }
-                style={
-                  styles.performanceCard
-                }
-              >
-                <Text
-                  style={
-                    styles.performanceLabel
-                  }
-                >
-                  TOTAL ASSIGNED
-                </Text>
-
-                <Text
-                  style={
-                    styles.performanceValue
-                  }
-                >
-                  {
-                    profile
-                      .totalAssignedOrders
-                  }
-                </Text>
-              </Pressable>
-
-              <View
-                style={
-                  styles.performanceCard
-                }
-              >
-                <Text
-                  style={
-                    styles.performanceLabel
-                  }
-                >
-                  ACTIVE SHIPMENTS
-                </Text>
-
-                <Text
-                  style={
-                    styles.performanceValue
-                  }
-                >
-                  {
-                    profile
-                      .activeShipments
-                  }
-                </Text>
-              </View>
-            </View>
-
-            {/* ASSIGNMENT */}
-
-            <Text
-              style={
-                styles.sectionTitle
-              }
-            >
-              Delivery Assignment
-            </Text>
-
-            <View
-              style={[
-                styles.performanceRow,
-
-                {
-                  columnGap:
-                    cardGap,
-                },
-              ]}
-            >
-              <View
-                style={
-                  styles.performanceCard
-                }
-              >
-                <Text
-                  style={
-                    styles.performanceLabel
-                  }
-                >
-                  ASSIGNED ZIP
-                </Text>
-
-                <Text
-                  style={
-                    styles.smallDetailValue
-                  }
-                >
-                  {profile.assignedZip ||
-                    'N/A'}
-                </Text>
-              </View>
-
-              <View
-                style={
-                  styles.performanceCard
-                }
-              >
-                <Text
-                  style={
-                    styles.performanceLabel
-                  }
-                >
-                  VEHICLE NUMBER
-                </Text>
-
-                <Text
-                  style={
-                    styles.smallDetailValue
-                  }
-                >
-                  {profile.vehicleNumber ||
-                    'N/A'}
-                </Text>
-              </View>
-            </View>
-
-            {/* DRIVING LICENCE */}
-
-            <Text
-              style={
-                styles.sectionTitle
-              }
-            >
-              Driving Licence
-            </Text>
-
-            <View
-              style={
-                styles.driverDetailsCard
-              }
-            >
-              <ProfileInfoRow
-                icon="ID"
-                label="LICENCE NUMBER"
-                value={
-                  profile.licenseNumber ||
-                  'Not available'
-                }
-              />
-
-              <View
-                style={
-                  styles.rowDivider
-                }
-              />
-
-              <ProfileInfoRow
-                icon="D"
-                label="LICENCE EXPIRY"
-                value={
-                  formatDate(
-                    profile.licenseExpiry,
-                  )
-                }
-              />
-            </View>
-
-            <View
-              style={
-                styles.documentsContainer
-              }
-            >
-              <DocumentCard
-                title="Licence Front"
-                subtitle="Tap to preview full licence"
-                imageValue={
-                  profile.licenseFront
-                }
-                authToken={
-                  authToken
-                }
-                onPress={() =>
-                  openDocument(
-                    'Licence Front',
-
-                    profile
-                      .licenseFront,
-                  )
-                }
-              />
-
-              <DocumentCard
-                title="Licence Back"
-                subtitle="Tap to preview full licence"
-                imageValue={
-                  profile.licenseBack
-                }
-                authToken={
-                  authToken
-                }
-                onPress={() =>
-                  openDocument(
-                    'Licence Back',
-
-                    profile
-                      .licenseBack,
-                  )
-                }
-              />
-            </View>
-
-            {/* LOGOUT */}
-
-            <Pressable
-              onPress={() =>
-                setLogoutPopupVisible(
-                  true,
-                )
-              }
-              style={
-                styles.logoutButton
-              }
-            >
-              <Text
-                style={
-                  styles.logoutTitle
-                }
-              >
-                Logout
-              </Text>
-            </Pressable>
-          </ScrollView>
         </View>
 
-        {/* =================================================
+        {/* BODY */}
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => loadProfile(true)}
+              colors={['#a9090d']}
+              tintColor="#a9090d"
+            />
+          }
+          contentContainerStyle={{
+            paddingHorizontal: horizontalPadding,
+
+            paddingTop: 17,
+
+            paddingBottom: 80,
+          }}
+        >
+          {!!profileError && (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorTitle}>Unable to Load Profile</Text>
+
+              <Text style={styles.errorMessage}>{profileError}</Text>
+            </View>
+          )}
+
+          {/* DRIVER DETAILS */}
+
+          <View style={styles.driverDetailsCard}>
+            <Text style={styles.cardTitle}>Driver Details</Text>
+
+            <Text style={styles.cardSubtitle}>Your personal information</Text>
+
+            <View style={styles.cardDivider} />
+
+            <ProfileInfoRow
+              icon="F"
+              label="FIRST NAME"
+              value={profile.firstName || 'Not available'}
+            />
+
+            <View style={styles.rowDivider} />
+
+            <ProfileInfoRow
+              icon="L"
+              label="LAST NAME"
+              value={profile.lastName || 'Not available'}
+            />
+
+            <View style={styles.rowDivider} />
+
+            <ProfileInfoRow
+              icon="@"
+              label="EMAIL"
+              value={profile.email || 'Not available'}
+            />
+
+            <View style={styles.rowDivider} />
+
+            <ProfileInfoRow
+              icon="☎"
+              label="PHONE"
+              value={profile.phone || 'Not available'}
+            />
+
+            <View style={styles.rowDivider} />
+
+            <ProfileInfoRow
+              icon="⌖"
+              label="ADDRESS"
+              multiline
+              value={profile.address || 'Not available'}
+            />
+          </View>
+
+          {/* PERFORMANCE */}
+
+          <Text style={styles.sectionTitle}>Delivery Performance</Text>
+
+          <View
+            style={[
+              styles.performanceRow,
+
+              {
+                columnGap: cardGap,
+              },
+            ]}
+          >
+            <Pressable
+              onPress={() => navigation.navigate('TotalOrder')}
+              style={styles.performanceCard}
+            >
+              <Text style={styles.performanceLabel}>TOTAL ASSIGNED</Text>
+
+              <Text style={styles.performanceValue}>
+                {profile.totalAssignedOrders}
+              </Text>
+            </Pressable>
+
+            <View style={styles.performanceCard}>
+              <Text style={styles.performanceLabel}>ACTIVE SHIPMENTS</Text>
+
+              <Text style={styles.performanceValue}>
+                {profile.activeShipments}
+              </Text>
+            </View>
+          </View>
+
+          {/* ASSIGNMENT */}
+
+          <Text style={styles.sectionTitle}>Delivery Assignment</Text>
+
+          <View
+            style={[
+              styles.performanceRow,
+
+              {
+                columnGap: cardGap,
+              },
+            ]}
+          >
+            <View style={styles.performanceCard}>
+              <Text style={styles.performanceLabel}>ASSIGNED ZIP</Text>
+
+              <Text style={styles.smallDetailValue}>
+                {profile.assignedZip || 'N/A'}
+              </Text>
+            </View>
+
+            <View style={styles.performanceCard}>
+              <Text style={styles.performanceLabel}>VEHICLE NUMBER</Text>
+
+              <Text style={styles.smallDetailValue}>
+                {profile.vehicleNumber || 'N/A'}
+              </Text>
+            </View>
+          </View>
+
+          {/* DRIVING LICENCE */}
+
+          <Text style={styles.sectionTitle}>Driving Licence</Text>
+
+          <View style={styles.driverDetailsCard}>
+            <ProfileInfoRow
+              icon="ID"
+              label="LICENCE NUMBER"
+              value={profile.licenseNumber || 'Not available'}
+            />
+
+            <View style={styles.rowDivider} />
+
+            <ProfileInfoRow
+              icon="D"
+              label="LICENCE EXPIRY"
+              value={formatDate(profile.licenseExpiry)}
+            />
+          </View>
+
+          <View style={styles.documentsContainer}>
+            <DocumentCard
+              title="Licence Front"
+              subtitle="Tap to preview full licence"
+              imageValue={profile.licenseFront}
+              authToken={authToken}
+              onPress={() =>
+                openDocument(
+                  'Licence Front',
+
+                  profile.licenseFront,
+                )
+              }
+            />
+
+            <DocumentCard
+              title="Licence Back"
+              subtitle="Tap to preview full licence"
+              imageValue={profile.licenseBack}
+              authToken={authToken}
+              onPress={() =>
+                openDocument(
+                  'Licence Back',
+
+                  profile.licenseBack,
+                )
+              }
+            />
+          </View>
+
+          {/* LOGOUT */}
+
+          <Pressable
+            onPress={() => setLogoutPopupVisible(true)}
+            style={styles.logoutButton}
+          >
+            <Text style={styles.logoutTitle}>Logout</Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+
+      {/* =================================================
             EDIT PROFILE
         ================================================= */}
 
-        <Modal
-          visible={
-            editProfileVisible
-          }
-          transparent
-          statusBarTranslucent
-          animationType="fade"
-          onRequestClose={
-            closeEditProfile
-          }
+      <Modal
+        visible={editProfileVisible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={closeEditProfile}
+      >
+        <KeyboardAvoidingView
+          style={styles.editModalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         >
-          <KeyboardAvoidingView
-            style={
-              styles.editModalOverlay
-            }
-            behavior={
-              Platform.OS ===
-              'ios'
-                ? 'padding'
-                : undefined
-            }
-          >
-            <Pressable
-              style={
-                StyleSheet
-                  .absoluteFillObject
-              }
-              disabled={
-                editProfileLoading
-              }
-              onPress={
-                closeEditProfile
-              }
-            />
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            disabled={editProfileLoading}
+            onPress={closeEditProfile}
+          />
 
-            <View
-              style={
-                styles.editModalCard
-              }
-            >
-              <View
-                style={
-                  styles.editModalHeader
-                }
-              >
-                <View>
-                  <Text
-                    style={
-                      styles.editModalEyebrow
-                    }
-                  >
-                    DRIVER ACCOUNT
-                  </Text>
+          <View style={styles.editModalCard}>
+            <View style={styles.editModalHeader}>
+              <View>
+                <Text style={styles.editModalEyebrow}>DRIVER ACCOUNT</Text>
 
-                  <Text
-                    style={
-                      styles.editModalTitle
-                    }
-                  >
-                    Edit Profile
-                  </Text>
-                </View>
-
-                <Pressable
-                  disabled={
-                    editProfileLoading
-                  }
-                  onPress={
-                    closeEditProfile
-                  }
-                  style={
-                    styles.editModalClose
-                  }
-                >
-                  <Text
-                    style={
-                      styles.editModalCloseText
-                    }
-                  >
-                    ×
-                  </Text>
-                </Pressable>
+                <Text style={styles.editModalTitle}>Edit Profile</Text>
               </View>
 
-              <ScrollView
-                showsVerticalScrollIndicator={
-                  false
-                }
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={
-                  styles.editFormContent
-                }
+              <Pressable
+                disabled={editProfileLoading}
+                onPress={closeEditProfile}
+                style={styles.editModalClose}
               >
-                {!!editProfileError && (
-                  <View
-                    style={
-                      styles.editErrorBox
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.editErrorText
-                      }
-                    >
-                      {
-                        editProfileError
-                      }
-                    </Text>
-                  </View>
-                )}
-
-                <Text
-                  style={
-                    styles.editSectionTitle
-                  }
-                >
-                  Personal Information
-                </Text>
-
-                <EditField
-                  label="First Name"
-                  required
-                  value={
-                    editForm
-                      .first_name
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'first_name',
-                        value,
-                      )
-                  }
-                  placeholder="First name"
-                />
-
-                <EditField
-                  label="Last Name"
-                  required
-                  value={
-                    editForm
-                      .last_name
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'last_name',
-                        value,
-                      )
-                  }
-                  placeholder="Last name"
-                />
-
-                <EditField
-                  label="Phone"
-                  required
-                  value={
-                    editForm.phone
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'phone',
-                        value,
-                      )
-                  }
-                  placeholder="Phone"
-                  keyboardType="phone-pad"
-                />
-
-                <EditField
-                  label="Email"
-                  required
-                  value={
-                    editForm.email
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'email',
-                        value,
-                      )
-                  }
-                  placeholder="Email"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                />
-
-                <EditField
-                  label="Address"
-                  required
-                  multiline
-                  value={
-                    editForm.address
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'address',
-                        value,
-                      )
-                  }
-                  placeholder="Address"
-                />
-
-                <Text
-                  style={
-                    styles.editSectionTitle
-                  }
-                >
-                  Driver Information
-                </Text>
-
-                <EditField
-                  label="Vehicle Registration"
-                  required
-                  value={
-                    editForm
-                      .vehicle_reg_no
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'vehicle_reg_no',
-                        value,
-                      )
-                  }
-                  placeholder="SA-00-TOP"
-                  autoCapitalize="characters"
-                />
-
-                <EditField
-                  label="Licence Number"
-                  required
-                  value={
-                    editForm
-                      .license_no
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'license_no',
-                        value,
-                      )
-                  }
-                  placeholder="DL-112233"
-                  autoCapitalize="characters"
-                />
-
-                <EditField
-                  label="Licence Expiry"
-                  required
-                  value={
-                    editForm
-                      .license_expiry
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'license_expiry',
-                        value,
-                      )
-                  }
-                  placeholder="2030-01-01"
-                  autoCapitalize="none"
-                />
-
-                <EditField
-                  label="Assigned ZIP"
-                  value={
-                    editForm
-                      .assigned_zip
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'assigned_zip',
-                        value,
-                      )
-                  }
-                  placeholder="5000, 5001"
-                />
-
-                {/* LICENCE PHOTOS */}
-
-                <Text
-                  style={
-                    styles.editSectionTitle
-                  }
-                >
-                  Driving Licence Photos
-                </Text>
-
-                <EditLicenseImage
-                  title="Licence Front"
-                  imageUri={
-                    editLicenseFrontPreview
-                  }
-                  authToken={
-                    authToken
-                  }
-                  isNewImage={
-                    Boolean(
-                      licenseFrontFile,
-                    )
-                  }
-                  onPress={() =>
-                    pickLicenseImage(
-                      'front',
-                    )
-                  }
-                  onReset={
-                    resetFrontImage
-                  }
-                />
-
-                <EditLicenseImage
-                  title="Licence Back"
-                  imageUri={
-                    editLicenseBackPreview
-                  }
-                  authToken={
-                    authToken
-                  }
-                  isNewImage={
-                    Boolean(
-                      licenseBackFile,
-                    )
-                  }
-                  onPress={() =>
-                    pickLicenseImage(
-                      'back',
-                    )
-                  }
-                  onReset={
-                    resetBackImage
-                  }
-                />
-
-                {/* PASSWORD */}
-
-                <Text
-                  style={
-                    styles.editSectionTitle
-                  }
-                >
-                  Change Password
-                </Text>
-
-                <Text
-                  style={
-                    styles.passwordHint
-                  }
-                >
-                  Leave password fields empty if you do not want to change your password.
-                </Text>
-
-                <EditField
-                  label="Current Password"
-                  value={
-                    editForm
-                      .old_password
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'old_password',
-                        value,
-                      )
-                  }
-                  placeholder="Current password"
-                  secureTextEntry
-                  autoCapitalize="none"
-                />
-
-                <EditField
-                  label="New Password"
-                  value={
-                    editForm
-                      .new_password
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'new_password',
-                        value,
-                      )
-                  }
-                  placeholder="New password"
-                  secureTextEntry
-                  autoCapitalize="none"
-                />
-
-                <EditField
-                  label="Confirm New Password"
-                  value={
-                    editForm
-                      .new_password_confirmation
-                  }
-                  onChangeText={
-                    value =>
-                      updateEditField(
-                        'new_password_confirmation',
-                        value,
-                      )
-                  }
-                  placeholder="Confirm new password"
-                  secureTextEntry
-                  autoCapitalize="none"
-                />
-
-                <Pressable
-                  disabled={
-                    editProfileLoading
-                  }
-                  onPress={
-                    saveProfileChanges
-                  }
-                  style={[
-                    styles.saveButton,
-
-                    editProfileLoading &&
-                      {
-                        opacity:
-                          0.65,
-                      },
-                  ]}
-                >
-                  {editProfileLoading ? (
-                    <View
-                      style={
-                        styles.saveLoadingRow
-                      }
-                    >
-                      <ActivityIndicator
-                        color="#ffffff"
-                        size="small"
-                      />
-
-                      <Text
-                        style={
-                          styles.saveButtonText
-                        }
-                      >
-                        Saving...
-                      </Text>
-                    </View>
-                  ) : (
-                    <Text
-                      style={
-                        styles.saveButtonText
-                      }
-                    >
-                      Save Changes
-                    </Text>
-                  )}
-                </Pressable>
-              </ScrollView>
+                <Text style={styles.editModalCloseText}>×</Text>
+              </Pressable>
             </View>
-          </KeyboardAvoidingView>
-        </Modal>
 
-        {/* =================================================
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.editFormContent}
+            >
+              {!!editProfileError && (
+                <View style={styles.editErrorBox}>
+                  <Text style={styles.editErrorText}>{editProfileError}</Text>
+                </View>
+              )}
+
+              <Text style={styles.editSectionTitle}>Personal Information</Text>
+
+              <EditField
+                label="First Name"
+                required
+                value={editForm.first_name}
+                onChangeText={value => updateEditField('first_name', value)}
+                placeholder="First name"
+              />
+
+              <EditField
+                label="Last Name"
+                required
+                value={editForm.last_name}
+                onChangeText={value => updateEditField('last_name', value)}
+                placeholder="Last name"
+              />
+
+              <EditField
+                label="Phone"
+                required
+                value={editForm.phone}
+                onChangeText={value => updateEditField('phone', value)}
+                placeholder="Phone"
+                keyboardType="phone-pad"
+              />
+
+              <EditField
+                label="Email"
+                required
+                value={editForm.email}
+                onChangeText={value => updateEditField('email', value)}
+                placeholder="Email"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <EditField
+                label="Address"
+                required
+                multiline
+                value={editForm.address}
+                onChangeText={value => updateEditField('address', value)}
+                placeholder="Address"
+              />
+
+              <Text style={styles.editSectionTitle}>Driver Information</Text>
+
+              <EditField
+                label="Vehicle Registration"
+                required
+                value={editForm.vehicle_reg_no}
+                onChangeText={value => updateEditField('vehicle_reg_no', value)}
+                placeholder="SA-00-TOP"
+                autoCapitalize="characters"
+              />
+
+              <EditField
+                label="Licence Number"
+                required
+                value={editForm.license_no}
+                onChangeText={value => updateEditField('license_no', value)}
+                placeholder="DL-112233"
+                autoCapitalize="characters"
+              />
+
+              <EditField
+                label="Licence Expiry"
+                required
+                value={editForm.license_expiry}
+                onChangeText={value => updateEditField('license_expiry', value)}
+                placeholder="2030-01-01"
+                autoCapitalize="none"
+              />
+
+              <EditField
+                label="Assigned ZIP"
+                value={editForm.assigned_zip}
+                onChangeText={value => updateEditField('assigned_zip', value)}
+                placeholder="5000, 5001"
+              />
+
+              {/* LICENCE PHOTOS */}
+
+              <Text style={styles.editSectionTitle}>
+                Driving Licence Photos
+              </Text>
+
+              <EditLicenseImage
+                title="Licence Front"
+                imageUri={editLicenseFrontPreview}
+                authToken={authToken}
+                isNewImage={Boolean(licenseFrontFile)}
+                onPress={() => pickLicenseImage('front')}
+                onReset={resetFrontImage}
+              />
+
+              <EditLicenseImage
+                title="Licence Back"
+                imageUri={editLicenseBackPreview}
+                authToken={authToken}
+                isNewImage={Boolean(licenseBackFile)}
+                onPress={() => pickLicenseImage('back')}
+                onReset={resetBackImage}
+              />
+
+              {/* PASSWORD */}
+
+              <Text style={styles.editSectionTitle}>Change Password</Text>
+
+              <Text style={styles.passwordHint}>
+                Leave password fields empty if you do not want to change your
+                password.
+              </Text>
+
+              <EditField
+                label="Current Password"
+                value={editForm.old_password}
+                onChangeText={value => updateEditField('old_password', value)}
+                placeholder="Current password"
+                secureTextEntry
+                autoCapitalize="none"
+              />
+
+              <EditField
+                label="New Password"
+                value={editForm.new_password}
+                onChangeText={value => updateEditField('new_password', value)}
+                placeholder="New password"
+                secureTextEntry
+                autoCapitalize="none"
+              />
+
+              <EditField
+                label="Confirm New Password"
+                value={editForm.new_password_confirmation}
+                onChangeText={value =>
+                  updateEditField('new_password_confirmation', value)
+                }
+                placeholder="Confirm new password"
+                secureTextEntry
+                autoCapitalize="none"
+              />
+
+              <Pressable
+                disabled={editProfileLoading}
+                onPress={saveProfileChanges}
+                style={[
+                  styles.saveButton,
+
+                  editProfileLoading && {
+                    opacity: 0.65,
+                  },
+                ]}
+              >
+                {editProfileLoading ? (
+                  <View style={styles.saveLoadingRow}>
+                    <ActivityIndicator color="#ffffff" size="small" />
+
+                    <Text style={styles.saveButtonText}>Saving...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.saveButtonText}>Save Changes</Text>
+                )}
+              </Pressable>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* =================================================
             LICENCE PREVIEW
         ================================================= */}
 
-        <Modal
-          visible={
-            documentPreview
-              .visible
-          }
-          transparent
-          statusBarTranslucent
-          animationType="fade"
-          onRequestClose={
-            closeDocument
-          }
-        >
-          <View
-            style={
-              styles.imageModalOverlay
-            }
-          >
-            <Pressable
-              style={
-                StyleSheet
-                  .absoluteFillObject
-              }
-              onPress={
-                closeDocument
-              }
-            />
+      <Modal
+        visible={documentPreview.visible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={closeDocument}
+      >
+        <View style={styles.imageModalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={closeDocument}
+          />
 
-            <View
-              style={
-                styles.imageModalCard
-              }
-            >
-              {/* HEADER */}
+          <View style={styles.imageModalCard}>
+            {/* HEADER */}
 
-              <View
-                style={
-                  styles.imageModalHeader
-                }
+            <View style={styles.imageModalHeader}>
+              <View>
+                <Text style={styles.imageModalEyebrow}>DRIVING LICENCE</Text>
+
+                <Text style={styles.imageModalTitle}>
+                  {documentPreview.title}
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={closeDocument}
+                style={styles.imageModalCloseButton}
               >
-                <View>
-                  <Text
-                    style={
-                      styles.imageModalEyebrow
-                    }
-                  >
-                    DRIVING LICENCE
-                  </Text>
+                <Text style={styles.imageModalCloseText}>×</Text>
+              </Pressable>
+            </View>
 
-                  <Text
-                    style={
-                      styles.imageModalTitle
-                    }
-                  >
-                    {
-                      documentPreview
-                        .title
-                    }
+            {/* IMAGE */}
+
+            <View style={styles.fullLicenseImageContainer}>
+              {documentLoading && !documentError && (
+                <View style={styles.documentLoader}>
+                  <ActivityIndicator size="large" color="#ffffff" />
+
+                  <Text style={styles.documentLoaderText}>
+                    Loading licence...
                   </Text>
                 </View>
+              )}
 
-                <Pressable
-                  onPress={
-                    closeDocument
-                  }
-                  style={
-                    styles.imageModalCloseButton
-                  }
-                >
-                  <Text
-                    style={
-                      styles.imageModalCloseText
-                    }
-                  >
-                    ×
-                  </Text>
-                </Pressable>
-              </View>
-
-              {/* IMAGE */}
-
-              <View
-                style={
-                  styles.fullLicenseImageContainer
-                }
-              >
-                {documentLoading &&
-                !documentError && (
-                  <View
-                    style={
-                      styles.documentLoader
-                    }
-                  >
-                    <ActivityIndicator
-                      size="large"
-                      color="#ffffff"
-                    />
-
-                    <Text
-                      style={
-                        styles.documentLoaderText
-                      }
-                    >
-                      Loading licence...
-                    </Text>
+              {documentError ? (
+                <View style={styles.documentErrorState}>
+                  <View style={styles.documentErrorCircle}>
+                    <Text style={styles.documentErrorIcon}>!</Text>
                   </View>
-                )}
 
-                {documentError ? (
-                  <View
-                    style={
-                      styles.documentErrorState
-                    }
-                  >
-                    <View
-                      style={
-                        styles.documentErrorCircle
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.documentErrorIcon
-                        }
-                      >
-                        !
-                      </Text>
-                    </View>
-
-                    <Text
-                      style={
-                        styles.documentErrorTitle
-                      }
-                    >
-                      Unable to Load Image
-                    </Text>
-
-                    <Text
-                      style={
-                        styles.documentErrorText
-                      }
-                    >
-                      None of the available licence image URLs could be loaded.
-                    </Text>
-                  </View>
-                ) : (
-                  !!currentDocumentImage && (
-                    <Image
-                      key={
-                        currentDocumentImage
-                      }
-                      source={
-                        createImageSource(
-                          currentDocumentImage,
-                          authToken,
-                        )
-                      }
-                      style={
-                        styles.imageModalImage
-                      }
-                      resizeMode="contain"
-                      onLoadStart={() => {
-                        console.log(
-                          'LICENCE LOAD START:',
-
-                          currentDocumentImage,
-                        );
-
-                        setDocumentLoading(
-                          true,
-                        );
-                      }}
-                      onLoad={() => {
-                        console.log(
-                          '✅ LICENCE PREVIEW LOADED:',
-
-                          currentDocumentImage,
-                        );
-
-                        setDocumentLoading(
-                          false,
-                        );
-
-                        setDocumentError(
-                          false,
-                        );
-                      }}
-                      onError={
-                        handleDocumentImageError
-                      }
-                    />
-                  )
-                )}
-              </View>
-
-              {/* FOOTER */}
-
-              <View
-                style={
-                  styles.imageModalFooter
-                }
-              >
-                <View
-                  style={{
-                    flex:
-                      1,
-                  }}
-                >
-                  <Text
-                    style={
-                      styles.imageModalFooterLabel
-                    }
-                  >
-                    DOCUMENT
+                  <Text style={styles.documentErrorTitle}>
+                    Unable to Load Image
                   </Text>
 
-                  <Text
-                    style={
-                      styles.imageModalFooterText
-                    }
-                  >
-                    {
-                      documentPreview
-                        .title
-                    }
+                  <Text style={styles.documentErrorText}>
+                    None of the available licence image URLs could be loaded.
                   </Text>
                 </View>
+              ) : (
+                !!currentDocumentImage && (
+                  <Image
+                    key={currentDocumentImage}
+                    source={createImageSource(currentDocumentImage, authToken)}
+                    style={styles.imageModalImage}
+                    resizeMode="contain"
+                    onLoadStart={() => {
+                      console.log(
+                        'LICENCE LOAD START:',
 
-                <Pressable
-                  onPress={
-                    closeDocument
-                  }
-                  style={
-                    styles.imageModalDoneButton
-                  }
-                >
-                  <Text
-                    style={
-                      styles.imageModalDoneText
-                    }
-                  >
-                    Done
-                  </Text>
-                </Pressable>
+                        currentDocumentImage,
+                      );
+
+                      setDocumentLoading(true);
+                    }}
+                    onLoad={() => {
+                      console.log(
+                        '✅ LICENCE PREVIEW LOADED:',
+
+                        currentDocumentImage,
+                      );
+
+                      setDocumentLoading(false);
+
+                      setDocumentError(false);
+                    }}
+                    onError={handleDocumentImageError}
+                  />
+                )
+              )}
+            </View>
+
+            {/* FOOTER */}
+
+            <View style={styles.imageModalFooter}>
+              <View
+                style={{
+                  flex: 1,
+                }}
+              >
+                <Text style={styles.imageModalFooterLabel}>DOCUMENT</Text>
+
+                <Text style={styles.imageModalFooterText}>
+                  {documentPreview.title}
+                </Text>
               </View>
+
+              <Pressable
+                onPress={closeDocument}
+                style={styles.imageModalDoneButton}
+              >
+                <Text style={styles.imageModalDoneText}>Done</Text>
+              </Pressable>
             </View>
           </View>
-        </Modal>
+        </View>
+      </Modal>
 
-        {/* =================================================
+      {/* =================================================
             LOGOUT
         ================================================= */}
 
-        <Modal
-          visible={
-            logoutPopupVisible
-          }
-          transparent
-          statusBarTranslucent
-          animationType="fade"
-          onRequestClose={() =>
-            setLogoutPopupVisible(
-              false,
-            )
-          }
-        >
-          <View
-            style={
-              styles.modalOverlay
-            }
-          >
-            <Pressable
-              style={
-                StyleSheet
-                  .absoluteFillObject
-              }
-              onPress={() =>
-                setLogoutPopupVisible(
-                  false,
-                )
-              }
-            />
+      <Modal
+        visible={logoutPopupVisible}
+        transparent
+        statusBarTranslucent
+        animationType="fade"
+        onRequestClose={() => setLogoutPopupVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={() => setLogoutPopupVisible(false)}
+          />
 
-            <View
-              style={
-                styles.modalCard
-              }
-            >
-              <Text
-                style={
-                  styles.modalTitle
-                }
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Confirm Logout</Text>
+
+            <Text style={styles.modalMessage}>
+              Are you sure you want to logout?
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                disabled={logoutLoading}
+                onPress={() => setLogoutPopupVisible(false)}
+                style={styles.cancelButton}
               >
-                Confirm Logout
-              </Text>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </Pressable>
 
-              <Text
-                style={
-                  styles.modalMessage
-                }
+              <Pressable
+                disabled={logoutLoading}
+                onPress={performLogout}
+                style={styles.confirmButton}
               >
-                Are you sure you want to logout?
-              </Text>
-
-              <View
-                style={
-                  styles.modalButtons
-                }
-              >
-                <Pressable
-                  disabled={
-                    logoutLoading
-                  }
-                  onPress={() =>
-                    setLogoutPopupVisible(
-                      false,
-                    )
-                  }
-                  style={
-                    styles.cancelButton
-                  }
-                >
-                  <Text
-                    style={
-                      styles.cancelButtonText
-                    }
-                  >
-                    Cancel
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  disabled={
-                    logoutLoading
-                  }
-                  onPress={
-                    performLogout
-                  }
-                  style={
-                    styles.confirmButton
-                  }
-                >
-                  {logoutLoading ? (
-                    <ActivityIndicator
-                      color="#ffffff"
-                    />
-                  ) : (
-                    <Text
-                      style={
-                        styles.confirmButtonText
-                      }
-                    >
-                      Yes, Logout
-                    </Text>
-                  )}
-                </Pressable>
-              </View>
+                {logoutLoading ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.confirmButtonText}>Yes, Logout</Text>
+                )}
+              </Pressable>
             </View>
           </View>
-        </Modal>
-      </SafeAreaView>
-    );
-  };
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+};
 
 export default ProfileScreen;
 
@@ -4767,1770 +2650,1288 @@ export default ProfileScreen;
  * STYLES
  * ========================================================= */
 
-const styles =
-  StyleSheet.create({
-    safeArea: {
-      flex:
-        1,
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
 
-      backgroundColor:
-        '#a9090d',
-    },
+    backgroundColor: '#a9090d',
+  },
 
-    screen: {
-      flex:
-        1,
+  screen: {
+    flex: 1,
 
-      backgroundColor:
-        '#f6f7f9',
-    },
+    backgroundColor: '#f6f7f9',
+  },
 
-    /* HEADER */
+  /* HEADER */
 
-    header: {
-      minHeight:
-        250,
+  header: {
+    minHeight: 250,
 
-      backgroundColor:
-        '#a9090d',
+    backgroundColor: '#a9090d',
 
-      paddingHorizontal:
-        17,
+    paddingHorizontal: 17,
 
-      paddingTop:
-        12,
+    paddingTop: 12,
 
-      paddingBottom:
-        27,
+    paddingBottom: 27,
 
-      borderBottomLeftRadius:
-        30,
+    borderBottomLeftRadius: 30,
 
-      borderBottomRightRadius:
-        30,
+    borderBottomRightRadius: 30,
 
-      overflow:
-        'hidden',
-    },
+    overflow: 'hidden',
+  },
 
-    headerCircleOne: {
-      position:
-        'absolute',
+  headerCircleOne: {
+    position: 'absolute',
 
-      width:
-        200,
+    width: 200,
 
-      height:
-        200,
+    height: 200,
 
-      borderRadius:
-        100,
+    borderRadius: 100,
 
-      borderWidth:
-        1,
+    borderWidth: 1,
 
-      borderColor:
-        'rgba(255,255,255,0.09)',
+    borderColor: 'rgba(255,255,255,0.09)',
 
-      top:
-        -85,
+    top: -85,
 
-      right:
-        -65,
-    },
+    right: -65,
+  },
 
-    headerCircleTwo: {
-      position:
-        'absolute',
+  headerCircleTwo: {
+    position: 'absolute',
 
-      width:
-        140,
+    width: 140,
 
-      height:
-        140,
+    height: 140,
 
-      borderRadius:
-        70,
+    borderRadius: 70,
 
-      backgroundColor:
-        'rgba(255,255,255,0.035)',
+    backgroundColor: 'rgba(255,255,255,0.035)',
 
-      bottom:
-        -70,
+    bottom: -70,
 
-      left:
-        -30,
-    },
+    left: -30,
+  },
 
-    headerTopRow: {
-      flexDirection:
-        'row',
+  headerTopRow: {
+    flexDirection: 'row',
 
-      alignItems:
-        'center',
-    },
+    alignItems: 'center',
+  },
 
-    headerBackButton: {
-      width:
-        42,
+  headerBackButton: {
+    width: 42,
 
-      height:
-        42,
+    height: 42,
 
-      borderRadius:
-        13,
+    borderRadius: 13,
 
-      backgroundColor:
-        'rgba(255,255,255,0.13)',
+    backgroundColor: 'rgba(255,255,255,0.13)',
 
-      alignItems:
-        'center',
+    alignItems: 'center',
 
-      justifyContent:
-        'center',
-    },
+    justifyContent: 'center',
+  },
 
-    headerBackIcon: {
-      width:
-        18,
+  headerBackIcon: {
+    width: 18,
 
-      height:
-        18,
+    height: 18,
 
-      tintColor:
-        '#ffffff',
-    },
+    tintColor: '#ffffff',
+  },
 
-    headerTitleArea: {
-      flex:
-        1,
+  headerTitleArea: {
+    flex: 1,
 
-      marginLeft:
-        12,
-    },
+    marginLeft: 12,
+  },
 
-    headerEyebrow: {
-      color:
-        '#f4c454',
+  headerEyebrow: {
+    color: '#f4c454',
 
-      fontSize:
-        9,
+    fontSize: 9,
 
-      fontWeight:
-        '900',
+    fontWeight: '900',
 
-      letterSpacing:
-        1,
-    },
+    letterSpacing: 1,
+  },
 
-    headerTitle: {
-      color:
-        '#ffffff',
+  headerTitle: {
+    color: '#ffffff',
 
-      fontSize:
-        22,
+    fontSize: 22,
 
-      fontWeight:
-        '900',
+    fontWeight: '900',
 
-      marginTop:
-        2,
-    },
+    marginTop: 2,
+  },
 
-    headerEditButton: {
-      width:
-        42,
+  headerEditButton: {
+    width: 42,
 
-      height:
-        42,
+    height: 42,
 
-      borderRadius:
-        13,
+    borderRadius: 13,
 
-      backgroundColor:
-        'rgba(255,255,255,0.13)',
+    backgroundColor: 'rgba(255,255,255,0.13)',
 
-      alignItems:
-        'center',
+    alignItems: 'center',
 
-      justifyContent:
-        'center',
-    },
+    justifyContent: 'center',
+  },
 
-    headerEditIcon: {
-      color:
-        '#ffffff',
+  headerEditIcon: {
+    color: '#ffffff',
 
-      fontSize:
-        19,
+    fontSize: 19,
 
-      fontWeight:
-        '900',
-    },
+    fontWeight: '900',
+  },
 
-    headerProfileArea: {
-      flexDirection:
-        'row',
+  headerProfileArea: {
+    flexDirection: 'row',
 
-      alignItems:
-        'center',
+    alignItems: 'center',
 
-      marginTop:
-        27,
-    },
+    marginTop: 27,
+  },
 
-    headerProfileImageWrapper: {
-      position:
-        'relative',
-    },
+  headerProfileImageWrapper: {
+    position: 'relative',
+  },
 
-    headerProfileImage: {
-      width:
-        84,
+  headerProfileImage: {
+    width: 84,
 
-      height:
-        84,
+    height: 84,
 
-      borderRadius:
-        24,
+    borderRadius: 24,
 
-      borderWidth:
-        3,
+    borderWidth: 3,
 
-      borderColor:
-        '#ffffff',
+    borderColor: '#ffffff',
 
-      backgroundColor:
-        '#e8e8e8',
-    },
+    backgroundColor: '#e8e8e8',
+  },
 
-    onlineBadgeDot: {
-      position:
-        'absolute',
+  headerProfileInitialBox: {
+    alignItems: 'center',
 
-      width:
-        16,
+    justifyContent: 'center',
 
-      height:
-        16,
+    backgroundColor: '#ffffff',
+  },
 
-      borderRadius:
-        8,
+  headerProfileInitialText: {
+    fontSize: 36,
 
-      right:
-        1,
+    fontWeight: '800',
 
-      bottom:
-        3,
+    color: '#a9090d',
+  },
 
-      borderWidth:
-        3,
+  onlineBadgeDot: {
+    position: 'absolute',
 
-      borderColor:
-        '#a9090d',
-    },
+    width: 16,
 
-    headerProfileTextArea: {
-      flex:
-        1,
+    height: 16,
 
-      marginLeft:
-        14,
+    borderRadius: 8,
 
-      minWidth:
-        0,
-    },
+    right: 1,
 
-    headerProfileName: {
-      color:
-        '#ffffff',
+    bottom: 3,
 
-      fontSize:
-        23,
+    borderWidth: 3,
 
-      fontWeight:
-        '900',
-    },
+    borderColor: '#a9090d',
+  },
 
-    headerProfileEmail: {
-      color:
-        'rgba(255,255,255,0.78)',
+  headerProfileTextArea: {
+    flex: 1,
 
-      fontSize:
-        11,
+    marginLeft: 14,
 
-      marginTop:
-        4,
-    },
+    minWidth: 0,
+  },
 
-    headerStatusRow: {
-      flexDirection:
-        'row',
+  headerProfileName: {
+    color: '#ffffff',
 
-      alignItems:
-        'center',
+    fontSize: 23,
 
-      marginTop:
-        9,
-    },
+    fontWeight: '900',
+  },
 
-    headerStatusBadge: {
-      flexDirection:
-        'row',
+  headerProfileEmail: {
+    color: 'rgba(255,255,255,0.78)',
 
-      alignItems:
-        'center',
+    fontSize: 11,
 
-      paddingHorizontal:
-        9,
+    marginTop: 4,
+  },
 
-      paddingVertical:
-        5,
+  headerStatusRow: {
+    flexDirection: 'row',
 
-      borderRadius:
-        20,
-    },
+    alignItems: 'center',
 
-    headerStatusDot: {
-      width:
-        7,
+    marginTop: 9,
+  },
 
-      height:
-        7,
+  headerStatusBadge: {
+    flexDirection: 'row',
 
-      borderRadius:
-        4,
+    alignItems: 'center',
 
-      marginRight:
-        5,
-    },
+    paddingHorizontal: 9,
 
-    headerStatusText: {
-      fontSize:
-        9,
+    paddingVertical: 5,
 
-      fontWeight:
-        '900',
-    },
+    borderRadius: 20,
+  },
 
-    headerUserType: {
-      color:
-        'rgba(255,255,255,0.72)',
+  headerStatusDot: {
+    width: 7,
 
-      fontSize:
-        8,
+    height: 7,
 
-      fontWeight:
-        '900',
+    borderRadius: 4,
 
-      marginLeft:
-        8,
-    },
+    marginRight: 5,
+  },
 
-    /* CARDS */
+  headerStatusText: {
+    fontSize: 9,
 
-    driverDetailsCard: {
-      backgroundColor:
-        '#ffffff',
+    fontWeight: '900',
+  },
 
-      borderRadius:
-        17,
+  headerUserType: {
+    color: 'rgba(255,255,255,0.72)',
 
-      padding:
-        15,
+    fontSize: 8,
 
-      borderWidth:
-        1,
+    fontWeight: '900',
 
-      borderColor:
-        '#e9ebee',
+    marginLeft: 8,
+  },
 
-      elevation:
-        2,
-    },
+  /* CARDS */
 
-    cardTitle: {
-      color:
-        '#17191d',
+  driverDetailsCard: {
+    backgroundColor: '#ffffff',
 
-      fontSize:
-        17,
+    borderRadius: 17,
 
-      fontWeight:
-        '900',
-    },
+    padding: 15,
 
-    cardSubtitle: {
-      color:
-        '#89909a',
+    borderWidth: 1,
 
-      fontSize:
-        10,
+    borderColor: '#e9ebee',
 
-      marginTop:
-        3,
-    },
+    elevation: 2,
+  },
 
-    cardDivider: {
-      height:
-        1,
+  cardTitle: {
+    color: '#17191d',
 
-      backgroundColor:
-        '#f0f1f3',
+    fontSize: 17,
 
-      marginVertical:
-        13,
-    },
+    fontWeight: '900',
+  },
 
-    rowDivider: {
-      height:
-        1,
+  cardSubtitle: {
+    color: '#89909a',
 
-      backgroundColor:
-        '#f1f2f4',
+    fontSize: 10,
 
-      marginLeft:
-        53,
-    },
+    marginTop: 3,
+  },
 
-    cardPressed: {
-      opacity:
-        0.7,
-    },
+  cardDivider: {
+    height: 1,
 
-    /* PROFILE */
+    backgroundColor: '#f0f1f3',
 
-    profileInfoRow: {
-      minHeight:
-        60,
+    marginVertical: 13,
+  },
 
-      flexDirection:
-        'row',
+  rowDivider: {
+    height: 1,
 
-      alignItems:
-        'center',
-    },
+    backgroundColor: '#f1f2f4',
 
-    profileInfoIcon: {
-      width:
-        42,
+    marginLeft: 53,
+  },
 
-      height:
-        42,
+  cardPressed: {
+    opacity: 0.7,
+  },
 
-      borderRadius:
-        12,
+  /* PROFILE */
 
-      backgroundColor:
-        '#fff0f1',
+  profileInfoRow: {
+    minHeight: 60,
 
-      alignItems:
-        'center',
+    flexDirection: 'row',
 
-      justifyContent:
-        'center',
+    alignItems: 'center',
+  },
 
-      marginRight:
-        11,
-    },
+  profileInfoIcon: {
+    width: 42,
 
-    profileInfoIconText: {
-      color:
-        '#a9090d',
+    height: 42,
 
-      fontSize:
-        13,
+    borderRadius: 12,
 
-      fontWeight:
-        '900',
-    },
+    backgroundColor: '#fff0f1',
 
-    profileInfoContent: {
-      flex:
-        1,
+    alignItems: 'center',
 
-      minWidth:
-        0,
-    },
+    justifyContent: 'center',
 
-    infoLabel: {
-      color:
-        '#9298a1',
+    marginRight: 11,
+  },
 
-      fontSize:
-        8.5,
+  profileInfoIconText: {
+    color: '#a9090d',
 
-      fontWeight:
-        '900',
+    fontSize: 13,
 
-      letterSpacing:
-        0.5,
-    },
+    fontWeight: '900',
+  },
 
-    profileInfoValue: {
-      color:
-        '#24272d',
+  profileInfoContent: {
+    flex: 1,
 
-      fontSize:
-        14,
+    minWidth: 0,
+  },
 
-      fontWeight:
-        '800',
+  infoLabel: {
+    color: '#9298a1',
 
-      marginTop:
-        4,
+    fontSize: 8.5,
 
-      lineHeight:
-        19,
-    },
+    fontWeight: '900',
 
-    /* SECTION */
+    letterSpacing: 0.5,
+  },
 
-    sectionTitle: {
-      color:
-        '#17191d',
+  profileInfoValue: {
+    color: '#24272d',
 
-      fontSize:
-        17,
+    fontSize: 14,
 
-      fontWeight:
-        '900',
+    fontWeight: '800',
 
-      marginTop:
-        22,
+    marginTop: 4,
 
-      marginBottom:
-        10,
-    },
+    lineHeight: 19,
+  },
 
-    /* PERFORMANCE */
+  /* SECTION */
 
-    performanceRow: {
-      flexDirection:
-        'row',
-    },
+  sectionTitle: {
+    color: '#17191d',
 
-    performanceCard: {
-      flex:
-        1,
+    fontSize: 17,
 
-      minHeight:
-        110,
+    fontWeight: '900',
 
-      backgroundColor:
-        '#ffffff',
+    marginTop: 22,
 
-      borderRadius:
-        16,
+    marginBottom: 10,
+  },
 
-      borderWidth:
-        1,
+  /* PERFORMANCE */
 
-      borderColor:
-        '#e9ebee',
+  performanceRow: {
+    flexDirection: 'row',
+  },
 
-      padding:
-        14,
+  performanceCard: {
+    flex: 1,
 
-      elevation:
-        2,
-    },
+    minHeight: 110,
 
-    performanceLabel: {
-      color:
-        '#8d949f',
+    backgroundColor: '#ffffff',
 
-      fontSize:
-        8.5,
+    borderRadius: 16,
 
-      fontWeight:
-        '900',
-    },
+    borderWidth: 1,
 
-    performanceValue: {
-      color:
-        '#17191d',
+    borderColor: '#e9ebee',
 
-      fontSize:
-        29,
+    padding: 14,
 
-      fontWeight:
-        '900',
+    elevation: 2,
+  },
 
-      marginTop:
-        7,
-    },
+  performanceLabel: {
+    color: '#8d949f',
 
-    smallDetailValue: {
-      color:
-        '#17191d',
+    fontSize: 8.5,
 
-      fontSize:
-        15,
+    fontWeight: '900',
+  },
 
-      fontWeight:
-        '900',
+  performanceValue: {
+    color: '#17191d',
 
-      marginTop:
-        7,
-    },
+    fontSize: 29,
 
-    /* DOCUMENTS */
+    fontWeight: '900',
 
-    documentsContainer: {
-      marginTop:
-        10,
+    marginTop: 7,
+  },
 
-      rowGap:
-        10,
-    },
+  smallDetailValue: {
+    color: '#17191d',
 
-    documentCard: {
-      minHeight:
-        86,
+    fontSize: 15,
 
-      flexDirection:
-        'row',
+    fontWeight: '900',
 
-      alignItems:
-        'center',
+    marginTop: 7,
+  },
 
-      backgroundColor:
-        '#ffffff',
+  /* DOCUMENTS */
 
-      borderRadius:
-        15,
+  documentsContainer: {
+    marginTop: 10,
 
-      borderWidth:
-        1,
+    rowGap: 10,
+  },
 
-      borderColor:
-        '#e9ebee',
+  documentCard: {
+    minHeight: 86,
 
-      padding:
-        11,
+    flexDirection: 'row',
 
-      elevation:
-        1,
-    },
+    alignItems: 'center',
 
-    documentCardUnavailable: {
-      opacity:
-        0.6,
-    },
+    backgroundColor: '#ffffff',
 
-    documentPreview: {
-      width:
-        72,
+    borderRadius: 15,
 
-      height:
-        58,
+    borderWidth: 1,
 
-      borderRadius:
-        11,
+    borderColor: '#e9ebee',
 
-      backgroundColor:
-        '#f2f3f5',
+    padding: 11,
 
-      overflow:
-        'hidden',
+    elevation: 1,
+  },
 
-      alignItems:
-        'center',
+  documentCardUnavailable: {
+    opacity: 0.6,
+  },
 
-      justifyContent:
-        'center',
+  documentPreview: {
+    width: 72,
 
-      marginRight:
-        11,
-    },
+    height: 58,
 
-    documentImage: {
-      width:
-        '100%',
+    borderRadius: 11,
 
-      height:
-        '100%',
-    },
+    backgroundColor: '#f2f3f5',
 
-    documentPlaceholderBox: {
-      flex:
-        1,
+    overflow: 'hidden',
 
-      width:
-        '100%',
+    alignItems: 'center',
 
-      alignItems:
-        'center',
+    justifyContent: 'center',
 
-      justifyContent:
-        'center',
-    },
+    marginRight: 11,
+  },
 
-    documentIconCircle: {
-      width:
-        40,
+  documentImage: {
+    width: '100%',
 
-      height:
-        40,
+    height: '100%',
+  },
 
-      borderRadius:
-        11,
+  documentPlaceholderBox: {
+    flex: 1,
 
-      backgroundColor:
-        '#fff0f1',
+    width: '100%',
 
-      alignItems:
-        'center',
+    alignItems: 'center',
 
-      justifyContent:
-        'center',
-    },
+    justifyContent: 'center',
+  },
 
-    documentIconText: {
-      color:
-        '#a9090d',
+  documentIconCircle: {
+    width: 40,
 
-      fontSize:
-        11,
+    height: 40,
 
-      fontWeight:
-        '900',
-    },
+    borderRadius: 11,
 
-    documentContent: {
-      flex:
-        1,
+    backgroundColor: '#fff0f1',
 
-      minWidth:
-        0,
-    },
+    alignItems: 'center',
 
-    documentTitle: {
-      color:
-        '#202329',
+    justifyContent: 'center',
+  },
 
-      fontSize:
-        13,
+  documentIconText: {
+    color: '#a9090d',
 
-      fontWeight:
-        '900',
-    },
+    fontSize: 11,
 
-    documentSubtitle: {
-      color:
-        '#8b919a',
+    fontWeight: '900',
+  },
 
-      fontSize:
-        9.5,
+  documentContent: {
+    flex: 1,
 
-      lineHeight:
-        14,
+    minWidth: 0,
+  },
 
-      marginTop:
-        3,
-    },
+  documentTitle: {
+    color: '#202329',
 
-    documentArrowBox: {
-      width:
-        34,
+    fontSize: 13,
 
-      height:
-        34,
+    fontWeight: '900',
+  },
 
-      borderRadius:
-        10,
+  documentSubtitle: {
+    color: '#8b919a',
 
-      backgroundColor:
-        '#fff0f1',
+    fontSize: 9.5,
 
-      alignItems:
-        'center',
+    lineHeight: 14,
 
-      justifyContent:
-        'center',
-    },
+    marginTop: 3,
+  },
 
-    documentArrow: {
-      color:
-        '#a9090d',
+  documentArrowBox: {
+    width: 34,
 
-      fontSize:
-        23,
-    },
+    height: 34,
 
-    /* LOGOUT */
+    borderRadius: 10,
 
-    logoutButton: {
-      minHeight:
-        62,
+    backgroundColor: '#fff0f1',
 
-      backgroundColor:
-        '#a9090d',
+    alignItems: 'center',
 
-      borderRadius:
-        15,
+    justifyContent: 'center',
+  },
 
-      alignItems:
-        'center',
+  documentArrow: {
+    color: '#a9090d',
 
-      justifyContent:
-        'center',
+    fontSize: 23,
+  },
 
-      marginTop:
-        25,
+  /* LOGOUT */
 
-      marginBottom:
-        20,
-    },
+  logoutButton: {
+    minHeight: 62,
 
-    logoutTitle: {
-      color:
-        '#ffffff',
+    backgroundColor: '#a9090d',
 
-      fontSize:
-        14,
+    borderRadius: 15,
 
-      fontWeight:
-        '900',
-    },
+    alignItems: 'center',
 
-    /* LOADING */
+    justifyContent: 'center',
 
-    loadingScreen: {
-      flex:
-        1,
+    marginTop: 25,
 
-      backgroundColor:
-        '#f6f7f9',
+    marginBottom: 20,
+  },
 
-      alignItems:
-        'center',
+  logoutTitle: {
+    color: '#ffffff',
 
-      justifyContent:
-        'center',
-    },
+    fontSize: 14,
 
-    loadingTitle: {
-      color:
-        '#17191d',
+    fontWeight: '900',
+  },
 
-      fontSize:
-        20,
+  /* LOADING */
 
-      fontWeight:
-        '900',
+  loadingScreen: {
+    flex: 1,
 
-      marginTop:
-        15,
-    },
+    backgroundColor: '#f6f7f9',
 
-    loadingMessage: {
-      color:
-        '#777f8c',
+    alignItems: 'center',
 
-      fontSize:
-        11,
+    justifyContent: 'center',
+  },
 
-      marginTop:
-        5,
-    },
+  loadingTitle: {
+    color: '#17191d',
 
-    /* ERRORS */
+    fontSize: 20,
 
-    errorCard: {
-      backgroundColor:
-        '#fff1f2',
+    fontWeight: '900',
 
-      borderRadius:
-        14,
+    marginTop: 15,
+  },
 
-      padding:
-        14,
+  loadingMessage: {
+    color: '#777f8c',
 
-      marginBottom:
-        15,
-    },
+    fontSize: 11,
 
-    errorTitle: {
-      color:
-        '#9f1239',
+    marginTop: 5,
+  },
 
-      fontSize:
-        14,
+  /* ERRORS */
 
-      fontWeight:
-        '900',
-    },
+  errorCard: {
+    backgroundColor: '#fff1f2',
 
-    errorMessage: {
-      color:
-        '#881337',
+    borderRadius: 14,
 
-      fontSize:
-        11,
+    padding: 14,
 
-      marginTop:
-        4,
-    },
+    marginBottom: 15,
+  },
 
-    /* EDIT */
+  errorTitle: {
+    color: '#9f1239',
 
-    editModalOverlay: {
-      flex:
-        1,
+    fontSize: 14,
 
-      backgroundColor:
-        'rgba(17,24,39,0.72)',
+    fontWeight: '900',
+  },
 
-      alignItems:
-        'center',
+  errorMessage: {
+    color: '#881337',
 
-      justifyContent:
-        'center',
+    fontSize: 11,
 
-      padding:
-        16,
-    },
+    marginTop: 4,
+  },
 
-    editModalCard: {
-      width:
-        '100%',
+  /* EDIT */
 
-      maxWidth:
-        520,
+  editModalOverlay: {
+    flex: 1,
 
-      maxHeight:
-        '94%',
+    backgroundColor: 'rgba(17,24,39,0.72)',
 
-      backgroundColor:
-        '#f6f7f9',
+    alignItems: 'center',
 
-      borderRadius:
-        24,
+    justifyContent: 'center',
 
-      overflow:
-        'hidden',
-    },
+    padding: 16,
+  },
 
-    editModalHeader: {
-      backgroundColor:
-        '#a9090d',
+  editModalCard: {
+    width: '100%',
 
-      minHeight:
-        100,
+    maxWidth: 520,
 
-      padding:
-        20,
+    maxHeight: '94%',
 
-      flexDirection:
-        'row',
+    backgroundColor: '#f6f7f9',
 
-      alignItems:
-        'center',
+    borderRadius: 24,
 
-      justifyContent:
-        'space-between',
-    },
+    overflow: 'hidden',
+  },
 
-    editModalEyebrow: {
-      color:
-        '#f4c454',
+  editModalHeader: {
+    backgroundColor: '#a9090d',
 
-      fontSize:
-        8,
+    minHeight: 100,
 
-      fontWeight:
-        '900',
+    padding: 20,
 
-      letterSpacing:
-        1,
-    },
+    flexDirection: 'row',
 
-    editModalTitle: {
-      color:
-        '#ffffff',
+    alignItems: 'center',
 
-      fontSize:
-        22,
+    justifyContent: 'space-between',
+  },
 
-      fontWeight:
-        '900',
+  editModalEyebrow: {
+    color: '#f4c454',
 
-      marginTop:
-        3,
-    },
+    fontSize: 8,
 
-    editModalClose: {
-      width:
-        38,
+    fontWeight: '900',
 
-      height:
-        38,
+    letterSpacing: 1,
+  },
 
-      borderRadius:
-        12,
+  editModalTitle: {
+    color: '#ffffff',
 
-      backgroundColor:
-        'rgba(255,255,255,0.15)',
+    fontSize: 22,
 
-      alignItems:
-        'center',
+    fontWeight: '900',
 
-      justifyContent:
-        'center',
-    },
+    marginTop: 3,
+  },
 
-    editModalCloseText: {
-      color:
-        '#ffffff',
+  editModalClose: {
+    width: 38,
 
-      fontSize:
-        26,
-    },
+    height: 38,
 
-    editFormContent: {
-      padding:
-        18,
+    borderRadius: 12,
 
-      paddingBottom:
-        40,
-    },
+    backgroundColor: 'rgba(255,255,255,0.15)',
 
-    editSectionTitle: {
-      color:
-        '#17191d',
+    alignItems: 'center',
 
-      fontSize:
-        16,
+    justifyContent: 'center',
+  },
 
-      fontWeight:
-        '900',
+  editModalCloseText: {
+    color: '#ffffff',
 
-      marginTop:
-        14,
+    fontSize: 26,
+  },
 
-      marginBottom:
-        12,
-    },
+  editFormContent: {
+    padding: 18,
 
-    editField: {
-      marginBottom:
-        14,
-    },
+    paddingBottom: 40,
+  },
 
-    editFieldLabel: {
-      color:
-        '#4b5563',
+  editSectionTitle: {
+    color: '#17191d',
 
-      fontSize:
-        10,
+    fontSize: 16,
 
-      fontWeight:
-        '900',
+    fontWeight: '900',
 
-      marginBottom:
-        7,
-    },
+    marginTop: 14,
 
-    requiredText: {
-      color:
-        '#a9090d',
-    },
+    marginBottom: 12,
+  },
 
-    editInput: {
-      minHeight:
-        50,
+  editField: {
+    marginBottom: 14,
+  },
 
-      backgroundColor:
-        '#ffffff',
+  editFieldLabel: {
+    color: '#4b5563',
 
-      borderWidth:
-        1,
+    fontSize: 10,
 
-      borderColor:
-        '#dedfe2',
+    fontWeight: '900',
 
-      borderRadius:
-        12,
+    marginBottom: 7,
+  },
 
-      paddingHorizontal:
-        13,
+  requiredText: {
+    color: '#a9090d',
+  },
 
-      color:
-        '#17191d',
+  editInput: {
+    minHeight: 50,
 
-      fontSize:
-        13,
-    },
+    backgroundColor: '#ffffff',
 
-    editInputMultiline: {
-      minHeight:
-        90,
+    borderWidth: 1,
 
-      paddingTop:
-        13,
+    borderColor: '#dedfe2',
 
-      textAlignVertical:
-        'top',
-    },
+    borderRadius: 12,
 
-    editErrorBox: {
-      backgroundColor:
-        '#fff1f2',
+    paddingHorizontal: 13,
 
-      borderRadius:
-        12,
+    color: '#17191d',
 
-      padding:
-        12,
+    fontSize: 13,
+  },
 
-      marginBottom:
-        12,
-    },
+  editInputMultiline: {
+    minHeight: 90,
 
-    editErrorText: {
-      color:
-        '#9f1239',
+    paddingTop: 13,
 
-      fontSize:
-        11,
-    },
+    textAlignVertical: 'top',
+  },
 
-    passwordHint: {
-      color:
-        '#737b87',
+  editErrorBox: {
+    backgroundColor: '#fff1f2',
 
-      fontSize:
-        10,
+    borderRadius: 12,
 
-      lineHeight:
-        16,
+    padding: 12,
 
-      marginBottom:
-        13,
-    },
+    marginBottom: 12,
+  },
 
-    /* EDIT IMAGE */
+  editErrorText: {
+    color: '#9f1239',
 
-    editImageSection: {
-      marginBottom:
-        18,
-    },
+    fontSize: 11,
+  },
 
-    editImagePicker: {
-      backgroundColor:
-        '#ffffff',
+  passwordHint: {
+    color: '#737b87',
 
-      borderWidth:
-        1,
+    fontSize: 10,
 
-      borderColor:
-        '#dedfe2',
+    lineHeight: 16,
 
-      borderRadius:
-        15,
+    marginBottom: 13,
+  },
 
-      overflow:
-        'hidden',
-    },
+  /* EDIT IMAGE */
 
-    editImagePreview: {
-      width:
-        '100%',
+  editImageSection: {
+    marginBottom: 18,
+  },
 
-      height:
-        180,
+  editImagePicker: {
+    backgroundColor: '#ffffff',
 
-      backgroundColor:
-        '#111111',
-    },
+    borderWidth: 1,
 
-    editImagePlaceholder: {
-      height:
-        150,
+    borderColor: '#dedfe2',
 
-      alignItems:
-        'center',
+    borderRadius: 15,
 
-      justifyContent:
-        'center',
+    overflow: 'hidden',
+  },
 
-      backgroundColor:
-        '#fafafa',
-    },
+  editImagePreview: {
+    width: '100%',
 
-    editImagePlaceholderIcon: {
-      color:
-        '#a9090d',
+    height: 180,
 
-      fontSize:
-        30,
+    backgroundColor: '#111111',
+  },
 
-      fontWeight:
-        '900',
-    },
+  editImagePlaceholder: {
+    height: 150,
 
-    editImagePlaceholderTitle: {
-      color:
-        '#565e6b',
+    alignItems: 'center',
 
-      fontSize:
-        11,
+    justifyContent: 'center',
 
-      fontWeight:
-        '800',
+    backgroundColor: '#fafafa',
+  },
 
-      marginTop:
-        5,
-    },
+  editImagePlaceholderIcon: {
+    color: '#a9090d',
 
-    editImageBottom: {
-      minHeight:
-        44,
+    fontSize: 30,
 
-      alignItems:
-        'center',
+    fontWeight: '900',
+  },
 
-      justifyContent:
-        'center',
+  editImagePlaceholderTitle: {
+    color: '#565e6b',
 
-      backgroundColor:
-        '#fff0f1',
-    },
+    fontSize: 11,
 
-    editImageButtonText: {
-      color:
-        '#a9090d',
+    fontWeight: '800',
 
-      fontSize:
-        10,
+    marginTop: 5,
+  },
 
-      fontWeight:
-        '900',
-    },
+  editImageBottom: {
+    minHeight: 44,
 
-    resetImageButton: {
-      alignSelf:
-        'flex-start',
+    alignItems: 'center',
 
-      paddingVertical:
-        8,
-    },
+    justifyContent: 'center',
 
-    resetImageButtonText: {
-      color:
-        '#a9090d',
+    backgroundColor: '#fff0f1',
+  },
 
-      fontSize:
-        9.5,
+  editImageButtonText: {
+    color: '#a9090d',
 
-      fontWeight:
-        '800',
-    },
+    fontSize: 10,
 
-    saveButton: {
-      minHeight:
-        54,
+    fontWeight: '900',
+  },
 
-      backgroundColor:
-        '#a9090d',
+  resetImageButton: {
+    alignSelf: 'flex-start',
 
-      borderRadius:
-        14,
+    paddingVertical: 8,
+  },
 
-      alignItems:
-        'center',
+  resetImageButtonText: {
+    color: '#a9090d',
 
-      justifyContent:
-        'center',
+    fontSize: 9.5,
 
-      marginTop:
-        15,
-    },
+    fontWeight: '800',
+  },
 
-    saveLoadingRow: {
-      flexDirection:
-        'row',
+  saveButton: {
+    minHeight: 54,
 
-      alignItems:
-        'center',
-    },
+    backgroundColor: '#a9090d',
 
-    saveButtonText: {
-      color:
-        '#ffffff',
+    borderRadius: 14,
 
-      fontSize:
-        12,
+    alignItems: 'center',
 
-      fontWeight:
-        '900',
+    justifyContent: 'center',
 
-      marginLeft:
-        7,
-    },
+    marginTop: 15,
+  },
 
-    /* LICENCE PREVIEW */
+  saveLoadingRow: {
+    flexDirection: 'row',
 
-    imageModalOverlay: {
-      flex:
-        1,
+    alignItems: 'center',
+  },
 
-      backgroundColor:
-        'rgba(0,0,0,0.90)',
+  saveButtonText: {
+    color: '#ffffff',
 
-      alignItems:
-        'center',
+    fontSize: 12,
 
-      justifyContent:
-        'center',
+    fontWeight: '900',
 
-      paddingHorizontal:
-        14,
+    marginLeft: 7,
+  },
 
-      paddingVertical:
-        30,
-    },
+  /* LICENCE PREVIEW */
 
-    imageModalCard: {
-      width:
-        '100%',
+  imageModalOverlay: {
+    flex: 1,
 
-      maxWidth:
-        560,
+    backgroundColor: 'rgba(0,0,0,0.90)',
 
-      backgroundColor:
-        '#ffffff',
+    alignItems: 'center',
 
-      borderRadius:
-        22,
+    justifyContent: 'center',
 
-      overflow:
-        'hidden',
-    },
+    paddingHorizontal: 14,
 
-    imageModalHeader: {
-      minHeight:
-        72,
+    paddingVertical: 30,
+  },
 
-      flexDirection:
-        'row',
+  imageModalCard: {
+    width: '100%',
 
-      alignItems:
-        'center',
+    maxWidth: 560,
 
-      justifyContent:
-        'space-between',
+    backgroundColor: '#ffffff',
 
-      backgroundColor:
-        '#a9090d',
+    borderRadius: 22,
 
-      paddingHorizontal:
-        17,
+    overflow: 'hidden',
+  },
 
-      paddingVertical:
-        13,
-    },
+  imageModalHeader: {
+    minHeight: 72,
 
-    imageModalEyebrow: {
-      color:
-        '#f4c454',
+    flexDirection: 'row',
 
-      fontSize:
-        8,
+    alignItems: 'center',
 
-      fontWeight:
-        '900',
+    justifyContent: 'space-between',
 
-      letterSpacing:
-        0.8,
-    },
+    backgroundColor: '#a9090d',
 
-    imageModalTitle: {
-      color:
-        '#ffffff',
+    paddingHorizontal: 17,
 
-      fontSize:
-        17,
+    paddingVertical: 13,
+  },
 
-      fontWeight:
-        '900',
+  imageModalEyebrow: {
+    color: '#f4c454',
 
-      marginTop:
-        2,
-    },
+    fontSize: 8,
 
-    imageModalCloseButton: {
-      width:
-        38,
+    fontWeight: '900',
 
-      height:
-        38,
+    letterSpacing: 0.8,
+  },
 
-      borderRadius:
-        12,
+  imageModalTitle: {
+    color: '#ffffff',
 
-      backgroundColor:
-        'rgba(255,255,255,0.15)',
+    fontSize: 17,
 
-      alignItems:
-        'center',
+    fontWeight: '900',
 
-      justifyContent:
-        'center',
-    },
+    marginTop: 2,
+  },
 
-    imageModalCloseText: {
-      color:
-        '#ffffff',
+  imageModalCloseButton: {
+    width: 38,
 
-      fontSize:
-        27,
+    height: 38,
 
-      lineHeight:
-        29,
-    },
+    borderRadius: 12,
 
-    fullLicenseImageContainer: {
-      width:
-        '100%',
+    backgroundColor: 'rgba(255,255,255,0.15)',
 
-      height:
-        420,
+    alignItems: 'center',
 
-      backgroundColor:
-        '#111111',
+    justifyContent: 'center',
+  },
 
-      alignItems:
-        'center',
+  imageModalCloseText: {
+    color: '#ffffff',
 
-      justifyContent:
-        'center',
+    fontSize: 27,
 
-      position:
-        'relative',
-    },
+    lineHeight: 29,
+  },
 
-    imageModalImage: {
-      width:
-        '100%',
+  fullLicenseImageContainer: {
+    width: '100%',
 
-      height:
-        '100%',
-    },
+    height: 420,
 
-    documentLoader: {
-      ...StyleSheet
-        .absoluteFillObject,
+    backgroundColor: '#111111',
 
-      zIndex:
-        10,
+    alignItems: 'center',
 
-      alignItems:
-        'center',
+    justifyContent: 'center',
 
-      justifyContent:
-        'center',
+    position: 'relative',
+  },
 
-      backgroundColor:
-        '#111111',
-    },
+  imageModalImage: {
+    width: '100%',
 
-    documentLoaderText: {
-      color:
-        '#ffffff',
+    height: '100%',
+  },
 
-      fontSize:
-        10,
+  documentLoader: {
+    ...StyleSheet.absoluteFillObject,
 
-      fontWeight:
-        '800',
+    zIndex: 10,
 
-      marginTop:
-        10,
-    },
+    alignItems: 'center',
 
-    documentErrorState: {
-      alignItems:
-        'center',
+    justifyContent: 'center',
 
-      justifyContent:
-        'center',
+    backgroundColor: '#111111',
+  },
 
-      paddingHorizontal:
-        30,
-    },
+  documentLoaderText: {
+    color: '#ffffff',
 
-    documentErrorCircle: {
-      width:
-        48,
+    fontSize: 10,
 
-      height:
-        48,
+    fontWeight: '800',
 
-      borderRadius:
-        24,
+    marginTop: 10,
+  },
 
-      backgroundColor:
-        '#d00000',
+  documentErrorState: {
+    alignItems: 'center',
 
-      alignItems:
-        'center',
+    justifyContent: 'center',
 
-      justifyContent:
-        'center',
-    },
+    paddingHorizontal: 30,
+  },
 
-    documentErrorIcon: {
-      color:
-        '#ffffff',
+  documentErrorCircle: {
+    width: 48,
 
-      fontSize:
-        24,
+    height: 48,
 
-      fontWeight:
-        '900',
-    },
+    borderRadius: 24,
 
-    documentErrorTitle: {
-      color:
-        '#ffffff',
+    backgroundColor: '#d00000',
 
-      fontSize:
-        15,
+    alignItems: 'center',
 
-      fontWeight:
-        '900',
+    justifyContent: 'center',
+  },
 
-      marginTop:
-        14,
-    },
+  documentErrorIcon: {
+    color: '#ffffff',
 
-    documentErrorText: {
-      color:
-        '#b7bbc2',
+    fontSize: 24,
 
-      fontSize:
-        10,
+    fontWeight: '900',
+  },
 
-      lineHeight:
-        15,
+  documentErrorTitle: {
+    color: '#ffffff',
 
-      textAlign:
-        'center',
+    fontSize: 15,
 
-      marginTop:
-        6,
-    },
+    fontWeight: '900',
 
-    imageModalFooter: {
-      minHeight:
-        66,
+    marginTop: 14,
+  },
 
-      flexDirection:
-        'row',
+  documentErrorText: {
+    color: '#b7bbc2',
 
-      alignItems:
-        'center',
+    fontSize: 10,
 
-      paddingHorizontal:
-        16,
-    },
+    lineHeight: 15,
 
-    imageModalFooterLabel: {
-      color:
-        '#9ca3af',
+    textAlign: 'center',
 
-      fontSize:
-        7,
+    marginTop: 6,
+  },
 
-      fontWeight:
-        '900',
+  imageModalFooter: {
+    minHeight: 66,
 
-      letterSpacing:
-        0.7,
-    },
+    flexDirection: 'row',
 
-    imageModalFooterText: {
-      color:
-        '#25282d',
+    alignItems: 'center',
 
-      fontSize:
-        12,
+    paddingHorizontal: 16,
+  },
 
-      fontWeight:
-        '900',
+  imageModalFooterLabel: {
+    color: '#9ca3af',
 
-      marginTop:
-        2,
-    },
+    fontSize: 7,
 
-    imageModalDoneButton: {
-      minWidth:
-        80,
+    fontWeight: '900',
 
-      height:
-        40,
+    letterSpacing: 0.7,
+  },
 
-      borderRadius:
-        11,
+  imageModalFooterText: {
+    color: '#25282d',
 
-      backgroundColor:
-        '#a9090d',
+    fontSize: 12,
 
-      alignItems:
-        'center',
+    fontWeight: '900',
 
-      justifyContent:
-        'center',
-    },
+    marginTop: 2,
+  },
 
-    imageModalDoneText: {
-      color:
-        '#ffffff',
+  imageModalDoneButton: {
+    minWidth: 80,
 
-      fontSize:
-        10,
+    height: 40,
 
-      fontWeight:
-        '900',
-    },
+    borderRadius: 11,
 
-    /* LOGOUT MODAL */
+    backgroundColor: '#a9090d',
 
-    modalOverlay: {
-      flex:
-        1,
+    alignItems: 'center',
 
-      backgroundColor:
-        'rgba(17,24,39,0.68)',
+    justifyContent: 'center',
+  },
 
-      alignItems:
-        'center',
+  imageModalDoneText: {
+    color: '#ffffff',
 
-      justifyContent:
-        'center',
+    fontSize: 10,
 
-      padding:
-        24,
-    },
+    fontWeight: '900',
+  },
 
-    modalCard: {
-      width:
-        '100%',
+  /* LOGOUT MODAL */
 
-      maxWidth:
-        380,
+  modalOverlay: {
+    flex: 1,
 
-      backgroundColor:
-        '#ffffff',
+    backgroundColor: 'rgba(17,24,39,0.68)',
 
-      borderRadius:
-        24,
+    alignItems: 'center',
 
-      padding:
-        24,
-    },
+    justifyContent: 'center',
 
-    modalTitle: {
-      color:
-        '#17191d',
+    padding: 24,
+  },
 
-      fontSize:
-        22,
+  modalCard: {
+    width: '100%',
 
-      fontWeight:
-        '900',
+    maxWidth: 380,
 
-      textAlign:
-        'center',
-    },
+    backgroundColor: '#ffffff',
 
-    modalMessage: {
-      color:
-        '#6b7280',
+    borderRadius: 24,
 
-      fontSize:
-        13,
+    padding: 24,
+  },
 
-      textAlign:
-        'center',
+  modalTitle: {
+    color: '#17191d',
 
-      marginVertical:
-        20,
-    },
+    fontSize: 22,
 
-    modalButtons: {
-      flexDirection:
-        'row',
+    fontWeight: '900',
 
-      columnGap:
-        10,
-    },
+    textAlign: 'center',
+  },
 
-    cancelButton: {
-      flex:
-        1,
+  modalMessage: {
+    color: '#6b7280',
 
-      minHeight:
-        50,
+    fontSize: 13,
 
-      borderWidth:
-        1,
+    textAlign: 'center',
 
-      borderColor:
-        '#d1d5db',
+    marginVertical: 20,
+  },
 
-      borderRadius:
-        13,
+  modalButtons: {
+    flexDirection: 'row',
 
-      alignItems:
-        'center',
+    columnGap: 10,
+  },
 
-      justifyContent:
-        'center',
-    },
+  cancelButton: {
+    flex: 1,
 
-    cancelButtonText: {
-      color:
-        '#4b5563',
+    minHeight: 50,
 
-      fontSize:
-        12,
+    borderWidth: 1,
 
-      fontWeight:
-        '800',
-    },
+    borderColor: '#d1d5db',
 
-    confirmButton: {
-      flex:
-        1,
+    borderRadius: 13,
 
-      minHeight:
-        50,
+    alignItems: 'center',
 
-      backgroundColor:
-        '#a9090d',
+    justifyContent: 'center',
+  },
 
-      borderRadius:
-        13,
+  cancelButtonText: {
+    color: '#4b5563',
 
-      alignItems:
-        'center',
+    fontSize: 12,
 
-      justifyContent:
-        'center',
-    },
+    fontWeight: '800',
+  },
 
-    confirmButtonText: {
-      color:
-        '#ffffff',
+  confirmButton: {
+    flex: 1,
 
-      fontSize:
-        12,
+    minHeight: 50,
 
-      fontWeight:
-        '900',
-    },
-  });
+    backgroundColor: '#a9090d',
+
+    borderRadius: 13,
+
+    alignItems: 'center',
+
+    justifyContent: 'center',
+  },
+
+  confirmButtonText: {
+    color: '#ffffff',
+
+    fontSize: 12,
+
+    fontWeight: '900',
+  },
+});
